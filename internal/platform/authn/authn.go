@@ -20,11 +20,19 @@ import (
 const (
 	Issuer   = "microservices-app/users"
 	Audience = "microservices-app"
+
+	// Service tokens are signed with a different key pair, issuer and audience from user tokens,
+	// so a token for one can never verify as the other.
+	ServiceIssuer   = "microservices-app/service"
+	ServiceAudience = "microservices-app-internal"
 )
 
 type Claims struct {
 	Subject string
 	Roles   []string
+	// Service is true only when the token was verified by a service verifier.
+	// It is never read from the token itself.
+	Service bool
 }
 
 func (c Claims) IsAdmin() bool {
@@ -82,10 +90,41 @@ func (s *Signer) Sign(userID string, roles []string) (string, time.Time, error) 
 	return signed, expiresAt, nil
 }
 
+// TokenVerifier is satisfied by *Verifier and Verifiers.
+type TokenVerifier interface {
+	Verify(tokenStr string) (Claims, error)
+}
+
 type Verifier struct {
 	publicKey ed25519.PublicKey
 	issuer    string
 	audience  string
+	service   bool
+}
+
+// NewServiceSigner signs service-to-service tokens whose subject is the calling service's name.
+func NewServiceSigner(privateKey ed25519.PrivateKey, ttl time.Duration) *Signer {
+	return NewSigner(privateKey, ServiceIssuer, ServiceAudience, ttl)
+}
+
+// NewServiceVerifier verifies tokens from NewServiceSigner and marks their Claims.Service.
+func NewServiceVerifier(publicKey ed25519.PublicKey) *Verifier {
+	return &Verifier{publicKey: publicKey, issuer: ServiceIssuer, audience: ServiceAudience, service: true}
+}
+
+// Verifiers tries each verifier in order and returns the first success.
+type Verifiers []*Verifier
+
+func (vs Verifiers) Verify(tokenStr string) (Claims, error) {
+	err := errors.New("authn: no verifiers")
+	for _, v := range vs {
+		claims, e := v.Verify(tokenStr)
+		if e == nil {
+			return claims, nil
+		}
+		err = e
+	}
+	return Claims{}, err
 }
 
 func NewVerifier(publicKey ed25519.PublicKey, issuer, audience string) *Verifier {
@@ -112,6 +151,7 @@ func (v *Verifier) Verify(tokenStr string) (Claims, error) {
 	return Claims{
 		Subject: customClaims.Subject,
 		Roles:   customClaims.Roles,
+		Service: v.service,
 	}, nil
 }
 
@@ -168,7 +208,7 @@ func MustFromContext(ctx context.Context) Claims {
 	return c
 }
 
-func UnaryInterceptor(v *Verifier, public map[string]bool) grpc.UnaryServerInterceptor {
+func UnaryInterceptor(v TokenVerifier, public map[string]bool) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if public != nil && public[info.FullMethod] {
 			return handler(ctx, req)

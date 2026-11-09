@@ -279,3 +279,38 @@ func TestUnaryInterceptor(t *testing.T) {
 		}
 	})
 }
+
+func TestServiceTokensAreSeparateFromUserTokens(t *testing.T) {
+	userPub, userPriv, _, _ := generateKeys(t)
+	svcPub, svcPriv, _, _ := generateKeys(t)
+	userSigner := authn.NewSigner(userPriv, authn.Issuer, authn.Audience, time.Minute)
+	svcSigner := authn.NewServiceSigner(svcPriv, time.Minute)
+	userV := authn.NewVerifier(userPub, authn.Issuer, authn.Audience)
+	svcV := authn.NewServiceVerifier(svcPub)
+	both := authn.Verifiers{userV, svcV}
+
+	userTok, _, _ := userSigner.Sign("user-1", []string{"admin"})
+	svcTok, _, _ := svcSigner.Sign("orders", []string{"service"})
+
+	if c, err := both.Verify(svcTok); err != nil || !c.Service || c.Subject != "orders" {
+		t.Fatalf("service token: %+v, %v", c, err)
+	}
+	if c, err := both.Verify(userTok); err != nil || c.Service {
+		t.Fatalf("user token: %+v, %v", c, err)
+	}
+	if _, err := userV.Verify(svcTok); err == nil {
+		t.Error("user verifier accepted a service token")
+	}
+	if _, err := svcV.Verify(userTok); err == nil {
+		t.Error("service verifier accepted a user token")
+	}
+
+	// Same key, wrong issuer/audience: still rejected, so users can't mint service tokens by accident.
+	forged, _, _ := authn.NewSigner(svcPriv, authn.Issuer, authn.Audience, time.Minute).Sign("orders", []string{"service"})
+	if _, err := svcV.Verify(forged); err == nil {
+		t.Error("service verifier accepted a token with user issuer/audience")
+	}
+	if _, err := (authn.Verifiers{}).Verify(userTok); err == nil {
+		t.Error("empty Verifiers accepted a token")
+	}
+}

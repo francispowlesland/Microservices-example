@@ -24,7 +24,7 @@ import (
 type Config struct {
 	Addr            string
 	AppEnv          string
-	AuthVerifier    *authn.Verifier
+	AuthVerifier    authn.TokenVerifier
 	PublicMethods   map[string]bool
 	ShutdownTimeout time.Duration
 	Logger          *slog.Logger
