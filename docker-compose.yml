@@ -1,5 +1,6 @@
-# Needs JWT_PRIVATE_KEY and JWT_PUBLIC_KEY in the environment or a .env file
-# (generate with: go run ./tools/keygen).
+# Needs JWT_PRIVATE_KEY and JWT_PUBLIC_KEY (go run ./tools/keygen) and
+# SERVICE_PRIVATE_KEY and SERVICE_PUBLIC_KEY (go run ./tools/keygen service)
+# in the environment or a .env file. ./start.sh generates all four.
 
 x-db: &db
   image: postgres:17-alpine
@@ -72,9 +73,13 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@orders-db:5432/orders?sslmode=disable
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY}
+      SERVICE_PRIVATE_KEY: ${SERVICE_PRIVATE_KEY:?set SERVICE_PRIVATE_KEY}
+      INVENTORY_ADDR: inventory:50054
     depends_on:
       orders-db:
         condition: service_healthy
+      inventory:
+        condition: service_started
 
   payments:
     <<: *service
@@ -96,8 +101,23 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@inventory-db:5432/inventory?sslmode=disable
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY}
+      SERVICE_PUBLIC_KEY: ${SERVICE_PUBLIC_KEY:?set SERVICE_PUBLIC_KEY}
     depends_on:
       inventory-db:
+        condition: service_healthy
+
+  # Development sample data. Waits for the inventory service to be healthy, which only happens
+  # after it has applied its migrations, then inserts any missing sample SKUs and exits.
+  inventory-seed:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: postgres
+    volumes:
+      - ./services/inventory/seed/dev-seed.sql:/seed.sql:ro
+    command: ["psql", "-v", "ON_ERROR_STOP=1", "-h", "inventory-db", "-U", "postgres", "-d", "inventory", "-f", "/seed.sql"]
+    depends_on:
+      inventory:
         condition: service_healthy
 
   # The only published port; every other service is reachable only on the compose network.

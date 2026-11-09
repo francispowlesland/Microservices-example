@@ -1,3 +1,7 @@
+// Command keygen prints an Ed25519 key pair as PEM.
+//
+//	keygen          user-token pair: JWT_PRIVATE_KEY (users only), JWT_PUBLIC_KEY (every verifier)
+//	keygen service  service-token pair: SERVICE_PRIVATE_KEY (orders only), SERVICE_PUBLIC_KEY (inventory only)
 package main
 
 import (
@@ -10,6 +14,11 @@ import (
 )
 
 func main() {
+	prefix, privWho, pubWho := "JWT", "Users service only", "All services"
+	if len(os.Args) > 1 && os.Args[1] == "service" {
+		prefix, privWho, pubWho = "SERVICE", "Orders service only", "Inventory service only"
+	}
+
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to generate ed25519 key: %v\n", err)
@@ -36,8 +45,8 @@ func main() {
 		Bytes: pubBytes,
 	})
 
-	fmt.Println("=== JWT_PRIVATE_KEY (Users service only) ===")
+	fmt.Printf("=== %s_PRIVATE_KEY (%s) ===\n", prefix, privWho)
 	fmt.Print(string(privPEM))
-	fmt.Println("\n=== JWT_PUBLIC_KEY (All services) ===")
+	fmt.Printf("\n=== %s_PUBLIC_KEY (%s) ===\n", prefix, pubWho)
 	fmt.Print(string(pubPEM))
 }
