@@ -1,0 +1,17 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/francispowlesland/microservices-app-go/gen/go
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: ../gen/go
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: ../gen/go
+    opt: paths=source_relative
+  # TypeScript messages + service descriptors for the SvelteKit gateway.
+  - remote: buf.build/bufbuild/es
+    out: ../services/gateway/src/lib/gen
+    opt: target=ts

@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package payments.v1;
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_PENDING = 1;
+  PAYMENT_STATUS_SUCCEEDED = 2;
+  PAYMENT_STATUS_FAILED = 3;
+  PAYMENT_STATUS_REFUNDED = 4;
+}
+
+message Payment {
+  string id = 1;
+  string order_id = 2;
+  int64 amount_cents = 3;
+  string currency = 4;
+  PaymentStatus status = 5;
+  string failure_reason = 6;
+}
+
+// Records and settles a payment for an order. No external processor is
+// involved; the service decides the outcome itself.
+message ProcessPaymentRequest {
+  string order_id = 1;
+  int64 amount_cents = 2;
+  string currency = 3;
+  // Retrying with the same key returns the original payment instead of
+  // charging twice.
+  string idempotency_key = 4;
+}
+
+message ProcessPaymentResponse {
+  Payment payment = 1;
+}
+
+message GetPaymentRequest {
+  string id = 1;
+}
+
+message GetPaymentResponse {
+  Payment payment = 1;
+}
+
+message ListPaymentsRequest {
+  string order_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListPaymentsResponse {
+  repeated Payment payments = 1;
+  string next_page_token = 2;
+}
+
+// Only SUCCEEDED payments can be refunded.
+message RefundPaymentRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+message RefundPaymentResponse {
+  Payment payment = 1;
+}
+
+service PaymentsService {
+  rpc ProcessPayment(ProcessPaymentRequest) returns (ProcessPaymentResponse);
+  rpc GetPayment(GetPaymentRequest) returns (GetPaymentResponse);
+  rpc ListPayments(ListPaymentsRequest) returns (ListPaymentsResponse);
+  rpc RefundPayment(RefundPaymentRequest) returns (RefundPaymentResponse);
+}

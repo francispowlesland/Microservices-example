@@ -1,0 +1,161 @@
+syntax = "proto3";
+
+package user.v1;
+
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  USER_STATUS_PENDING_VERIFICATION = 1;
+  USER_STATUS_ACTIVE = 2;
+  USER_STATUS_SUSPENDED = 3;
+}
+
+// The password and its hash are deliberately absent: credentials only ever
+// travel in write-side requests below and are never returned.
+message User {
+  string id = 1;
+  string email = 2;
+  string username = 3;
+  string name = 4;
+  UserStatus status = 5;
+  bool email_verified = 6;
+  repeated string roles = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  google.protobuf.Timestamp last_login_at = 10;
+}
+
+message Tokens {
+  string access_token = 1 [debug_redact = true];
+  string refresh_token = 2 [debug_redact = true];
+  google.protobuf.Timestamp access_token_expires_at = 3;
+  google.protobuf.Timestamp refresh_token_expires_at = 4;
+}
+
+// ---- User management ----
+
+message CreateUserRequest {
+  string email = 1;
+  string username = 2;
+  string name = 3;
+  string password = 4 [debug_redact = true];
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+// Updates profile fields named in update_mask (e.g. "name", "username").
+// Status, roles and credentials cannot be changed here.
+message UpdateUserRequest {
+  User user = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message UpdateUserResponse {
+  User user = 1;
+}
+
+message DeleteUserRequest {
+  string id = 1;
+}
+
+message DeleteUserResponse {}
+
+message ListUsersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  string next_page_token = 2;
+}
+
+service UserService {
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
+
+// ---- Authentication ----
+
+message LoginRequest {
+  // Email address or username.
+  string identifier = 1;
+  string password = 2 [debug_redact = true];
+}
+
+message LoginResponse {
+  User user = 1;
+  Tokens tokens = 2;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1 [debug_redact = true];
+}
+
+message RefreshTokenResponse {
+  Tokens tokens = 1;
+}
+
+// Revokes the given refresh token.
+message LogoutRequest {
+  string refresh_token = 1 [debug_redact = true];
+}
+
+message LogoutResponse {}
+
+// Requires the caller to be authenticated as user_id.
+message ChangePasswordRequest {
+  string user_id = 1;
+  string current_password = 2 [debug_redact = true];
+  string new_password = 3 [debug_redact = true];
+}
+
+message ChangePasswordResponse {}
+
+// Always succeeds from the caller's view so it cannot be used to discover
+// which emails are registered.
+message RequestPasswordResetRequest {
+  string email = 1;
+}
+
+message RequestPasswordResetResponse {}
+
+message ResetPasswordRequest {
+  string reset_token = 1 [debug_redact = true];
+  string new_password = 2 [debug_redact = true];
+}
+
+message ResetPasswordResponse {}
+
+message VerifyEmailRequest {
+  string verification_token = 1 [debug_redact = true];
+}
+
+message VerifyEmailResponse {
+  User user = 1;
+}
+
+service AuthService {
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+  rpc RequestPasswordReset(RequestPasswordResetRequest) returns (RequestPasswordResetResponse);
+  rpc ResetPassword(ResetPasswordRequest) returns (ResetPasswordResponse);
+  rpc VerifyEmail(VerifyEmailRequest) returns (VerifyEmailResponse);
+}

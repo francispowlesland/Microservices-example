@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package inventory.v1;
+
+message InventoryItem {
+  string id = 1;
+  string sku = 2;
+  int32 quantity = 3;
+}
+
+message CreateInventoryItemRequest {
+  InventoryItem item = 1;
+}
+
+message CreateInventoryItemResponse {
+  InventoryItem item = 1;
+}
+
+message GetInventoryItemRequest {
+  string id = 1;
+}
+
+message GetInventoryItemResponse {
+  InventoryItem item = 1;
+}
+
+message UpdateInventoryItemRequest {
+  InventoryItem item = 1;
+}
+
+message UpdateInventoryItemResponse {
+  InventoryItem item = 1;
+}
+
+message DeleteInventoryItemRequest {
+  string id = 1;
+}
+
+message DeleteInventoryItemResponse {}
+
+message ListInventoryItemsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListInventoryItemsResponse {
+  repeated InventoryItem items = 1;
+  string next_page_token = 2;
+}
+
+service InventoryService {
+  rpc CreateInventoryItem(CreateInventoryItemRequest) returns (CreateInventoryItemResponse);
+  rpc GetInventoryItem(GetInventoryItemRequest) returns (GetInventoryItemResponse);
+  rpc UpdateInventoryItem(UpdateInventoryItemRequest) returns (UpdateInventoryItemResponse);
+  rpc DeleteInventoryItem(DeleteInventoryItemRequest) returns (DeleteInventoryItemResponse);
+  rpc ListInventoryItems(ListInventoryItemsRequest) returns (ListInventoryItemsResponse);
+}
