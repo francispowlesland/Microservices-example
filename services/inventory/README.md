@@ -1,26 +1,16 @@
 # inventory
 
-gRPC service implementing `inventory.v1.InventoryService`
-(`proto/inventory/v1/inventory.proto`, generated package `inventoryv1`).
-Port `:50054`. It owns its own Postgres database (`inventory`) and never
-connects to another service's database.
+The stock catalogue: a gRPC service implementing `inventory.v1.InventoryService`
+(`proto/inventory/v1/inventory.proto`, generated package `inventoryv1`). It
+listens on `:50054` and owns its own Postgres database (`inventory`), which no
+other service connects to.
 
-## Behaviour
+An item is an `id`, a `sku` and a `quantity`. That's the entire domain, which
+keeps the rest of this README mercifully short.
 
-Every RPC needs a valid JWT (default deny). Inventory is shared catalogue
-data, so reads are open to any authenticated user and writes are admin-only.
-
-| RPC | Who | Notes |
-|---|---|---|
-| `CreateInventoryItem` | admin | Service generates the id. SKU is trimmed and upper-cased (ASCII only), must match `^[A-Z0-9][A-Z0-9._-]{0,63}$`. `quantity >= 0`. Duplicate SKU: `AlreadyExists`. |
-| `GetInventoryItem` | any authenticated | Unknown id: `NotFound`. |
-| `UpdateInventoryItem` | admin | Full replace of `sku` and `quantity`. SKU held by another item: `AlreadyExists`. Unknown id: `NotFound`. Bumps `updated_at`. |
-| `DeleteInventoryItem` | admin | Unknown id: `NotFound`. |
-| `ListInventoryItems` | any authenticated | Keyset pagination on `(created_at, id)`, newest first. Default page 50, max 200. |
-
-Non-admin writes return `PermissionDenied`. Bad UUIDs, SKUs, quantities and
-page tokens return `InvalidArgument`. Anything unexpected is logged
-server-side and returned as `Internal: internal error`.
+Background reading, if you want it: [architecture](../../docs/architecture.md),
+[auth](../../docs/auth.md), [local development](../../docs/local-development.md)
+and [protobuf and codegen](../../docs/protobuf-and-codegen.md).
 
 ## Configuration
 
@@ -28,83 +18,127 @@ server-side and returned as `Internal: internal error`.
 |---|---|---|
 | `GRPC_ADDR` | `:50054` | Listen address. |
 | `DATABASE_URL` | none, required | Postgres URL for this service's own database. |
-| `APP_ENV` | `development` | `production` disables gRPC reflection. |
-| `JWT_PUBLIC_KEY` | none, required | Ed25519 public key, PKIX PEM. Issuer `microservices-app/users`, audience `microservices-app`. |
+| `APP_ENV` | `development` | Anything other than `production` enables gRPC reflection. The Dockerfile sets `production`. |
+| `JWT_PUBLIC_KEY` | none, required | Ed25519 public key, PKIX PEM. Tokens must have issuer `microservices-app/users` and audience `microservices-app`. |
 
-Migrations are embedded and applied on startup. Connect and migrate retry for
-about 30 seconds, so the service can start alongside its database.
+Missing `DATABASE_URL` or `JWT_PUBLIC_KEY` stops the service at startup, as does
+a key that isn't a valid Ed25519 PKIX PEM. Migrations are embedded in the binary
+and applied on every start. Both the migration and the connection retry for
+about 30 seconds, so the service can be started alongside its database without
+anyone having to arrange the order.
 
-## Contract gaps
-
-`InventoryItem` has only `id`, `sku` and `quantity`. `UpdateInventoryItem` is a
-full replace with no field mask, and there is no atomic adjust or reserve RPC.
-
-Because `UpdateInventoryItem` sets an **absolute** `quantity`, two concurrent
-callers doing read-modify-write can lose an update. This service cannot fix
-that on its own. When orders start reserving stock, add
-`AdjustQuantity(id, delta)`: an atomic `quantity = quantity + $delta` that
-fails if the result would be negative. It is deliberately not built now, and
-`proto/` has not been touched.
-
-## Platform notes
-
-- Uses `internal/platform/{config,authn,pagination,pgxutil,grpcx}` as-is.
-  No gaps found that needed a workaround.
-- `grpcx.Config.PublicMethods` is left empty, so every method requires a token.
-- No dependencies were added. Everything the service imports is already in
-  `go.mod` (`google.golang.org/grpc/test/bufconn` ships with grpc).
-
-## Run
+## Running
 
 ```sh
 export DATABASE_URL='postgres://postgres:postgres@localhost:5432/inventory?sslmode=disable'
-# Run `go run ./tools/keygen` and paste the printed PUBLIC KEY PEM block:
+# `go run ./tools/keygen` prints a private and a public key. Save the public
+# key PEM block (only the public one) to users-public.pem.
 export JWT_PUBLIC_KEY="$(cat users-public.pem)"
 go run ./services/inventory/cmd/inventory
 ```
 
-`inventory healthcheck` dials `GRPC_ADDR` on localhost and calls
-`grpc.health.v1.Health/Check`. It exits 0 if SERVING, otherwise 1.
+In `docker-compose.yml` the service is `inventory`, backed by `inventory-db`
+(Postgres 17) and the `inventory-db-data` volume. It takes `JWT_PUBLIC_KEY` from
+your environment or `.env`, and the gateway reaches it at
+`INVENTORY_SERVICE_URL=http://inventory:50054`.
 
-## Test
+The binary also has a `healthcheck` subcommand. `inventory healthcheck` dials
+`127.0.0.1` on the port from `GRPC_ADDR` and calls `grpc.health.v1.Health/Check`.
+It exits 0 on `SERVING` and 1 otherwise. The Dockerfile's `HEALTHCHECK` uses it
+(see [Known limitations](#known-limitations) before trusting the result).
 
-```sh
-go test -short ./services/inventory/...   # unit + bufconn, no Docker
-go test ./services/inventory/...          # also runs store tests on a throwaway Postgres (needs Docker)
-```
+### Docker
 
-- `internal/service`: fake `Store`; auth matrix for every RPC, SKU
-  normalisation table, quantity and UUID validation, duplicate-SKU mapping,
-  pagination, error non-leakage, registration check, plus a `bufconn` test
-  through the real auth interceptor (admin writes, customer reads and lists,
-  customer write denied, no token `Unauthenticated`).
-- `internal/store`: real Postgres via `pgxtest.StartPostgres`: CRUD, unique
-  SKU, `quantity >= 0` check, keyset pagination across `created_at` ties.
-  Skipped under `-short` or when Docker is unavailable.
-
-## Docker
-
-Build context is the repo root:
+The build context is the repo root:
 
 ```sh
 docker build -f services/inventory/Dockerfile -t inventory:dev .
 ```
 
-Smoke test against a throwaway Postgres (no secrets are baked into the image):
+The image runs as non-root on `gcr.io/distroless/static-debian12:nonroot`, with
+`APP_ENV=production` and `GRPC_ADDR=:50054` baked in. No secrets are.
+
+## API
+
+Every RPC requires a valid bearer JWT; nothing is public. Reads are open to any
+authenticated user, since this is shared catalogue data. Writes need the `admin`
+role.
+
+| RPC | Who | Behaviour |
+|---|---|---|
+| `CreateInventoryItem` | admin | The service generates the id; any id the caller sends is ignored. Duplicate SKU: `AlreadyExists`. |
+| `GetInventoryItem` | any authenticated user | Unknown id: `NotFound`. |
+| `UpdateInventoryItem` | admin | Full replace of `sku` and `quantity`, and bumps `updated_at`. SKU held by a different item: `AlreadyExists`. Unknown id: `NotFound`. |
+| `DeleteInventoryItem` | admin | Hard delete. Unknown id: `NotFound`. |
+| `ListInventoryItems` | any authenticated user | Keyset pagination on `(created_at, id)`, newest first. Default page size 50, maximum 200. |
+
+Validation, applied to create and update:
+
+- `sku` is trimmed and upper-cased (ASCII letters only, so non-ASCII characters can't fold into valid ones),
+  then must match `^[A-Z0-9][A-Z0-9._-]{0,63}$`. So `" abc-1 "` is stored as `ABC-1`.
+- `quantity` must be `>= 0`.
+- `item` must be present, and `id` must be a valid UUID for get, update and delete.
+
+Error mapping:
+
+| Code | When |
+|---|---|
+| `Unauthenticated` | Missing, malformed or invalid token. |
+| `PermissionDenied` | Write RPC without the `admin` role. The admin check runs before any validation. |
+| `InvalidArgument` | Bad UUID, SKU, quantity or `page_token`. |
+| `NotFound` / `AlreadyExists` | As in the table above. |
+| `Internal` | Anything else. The real error is logged server-side; the caller only sees `internal error`. |
+
+`ListInventoryItems` fetches one row more than the page size to decide whether
+there's a next page. `next_page_token` is empty on the last page. Tokens are
+opaque (base64 of timestamp and id); treat them that way.
+
+## Data model
+
+One table, created by `migrations/00001_create_inventory_items.sql` (goose):
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | Primary key. |
+| `sku` | `text`, not null | Unique index `inventory_items_sku_key`. |
+| `quantity` | `integer`, not null | `CHECK (quantity >= 0)`. |
+| `created_at` | `timestamptz`, not null | Defaults to `now()`. |
+| `updated_at` | `timestamptz`, not null | Defaults to `now()`; set on update. |
+
+There's also an index on `(created_at DESC, id DESC)` to serve the list query.
+`created_at` and `updated_at` exist in the database but aren't part of the
+`InventoryItem` message, so clients never see them.
+
+## Testing
 
 ```sh
-docker network create inv-net
-docker run -d --name inv-pg --network inv-net \
-  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=inventory postgres:17
-docker run -d --name inv --network inv-net \
-  -e DATABASE_URL='postgres://postgres:postgres@inv-pg:5432/inventory?sslmode=disable' \
-  -e JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY" \
-  inventory:dev
-docker inspect --format '{{.State.Health.Status}}' inv   # becomes "healthy"
-docker stop inv   # exits cleanly
-docker rm -f inv inv-pg && docker network rm inv-net
+go test -short ./services/inventory/...   # unit + bufconn, no Docker
+go test ./services/inventory/...          # also runs the store tests on a throwaway Postgres (needs Docker)
 ```
 
-The image runs as non-root on `gcr.io/distroless/static-debian12:nonroot`.
-The future compose file should give this service a dedicated Postgres service
-and volume.
+- `internal/service` uses a fake `Store`. It covers the auth matrix for every
+  RPC, SKU normalisation, quantity and UUID validation, duplicate-SKU mapping,
+  pagination, error non-leakage and a check that every RPC in the contract is
+  registered. A `bufconn` test also goes through the real auth interceptor:
+  admin writes, customer reads and lists, a customer write denied, and no token
+  giving `Unauthenticated`.
+- `internal/store` runs against real Postgres via `pgxtest.StartPostgres`: CRUD,
+  unique SKU, the `quantity >= 0` check and keyset pagination across identical
+  `created_at` values. These are skipped under `-short` or when Docker isn't
+  available.
+
+## Known limitations
+
+- **Lost updates.** `UpdateInventoryItem` sets an absolute `quantity`, so two
+  callers doing read-modify-write can overwrite each other, and this service
+  can't prevent that on its own. There's no field mask and no atomic adjust or
+  reserve RPC. When orders start reserving stock, the sensible addition is
+  `AdjustQuantity(id, delta)`: an atomic `quantity = quantity + $delta` that
+  fails if the result would be negative. It hasn't been built, and `proto/` is
+  unchanged.
+- **Health probe and auth.** `grpcx.Config.PublicMethods` is left empty in
+  `cmd/inventory/main.go`, and the health client sends no token. Reading the
+  code, that means `Health/Check` is rejected as `Unauthenticated`, so
+  `inventory healthcheck` (and therefore the Docker `HEALTHCHECK`) would report
+  failure against a running server. I haven't run it to confirm. `payments`
+  and `users` allow `/grpc.health.v1.Health/Check`; `orders` doesn't either.

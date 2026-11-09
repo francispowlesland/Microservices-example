@@ -1,0 +1,125 @@
+# Needs JWT_PRIVATE_KEY and JWT_PUBLIC_KEY in the environment or a .env file
+# (generate with: go run ./tools/keygen).
+
+x-db: &db
+  image: postgres:17-alpine
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U postgres"]
+    interval: 5s
+    timeout: 5s
+    retries: 10
+
+x-service: &service
+  restart: unless-stopped
+
+services:
+  users-db:
+    <<: *db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: users
+    volumes:
+      - users-db-data:/var/lib/postgresql/data
+
+  orders-db:
+    <<: *db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orders
+    volumes:
+      - orders-db-data:/var/lib/postgresql/data
+
+  payments-db:
+    <<: *db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payments
+    volumes:
+      - payments-db-data:/var/lib/postgresql/data
+
+  inventory-db:
+    <<: *db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inventory
+    volumes:
+      - inventory-db-data:/var/lib/postgresql/data
+
+  users:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/users/Dockerfile
+    environment:
+      # The image defaults to production, which refuses the log-only mailer.
+      APP_ENV: development
+      DATABASE_URL: postgres://postgres:postgres@users-db:5432/users?sslmode=disable
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?set JWT_PRIVATE_KEY}
+    depends_on:
+      users-db:
+        condition: service_healthy
+
+  orders:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/orders/Dockerfile
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@orders-db:5432/orders?sslmode=disable
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY}
+    depends_on:
+      orders-db:
+        condition: service_healthy
+
+  payments:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/payments/Dockerfile
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@payments-db:5432/payments?sslmode=disable
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY}
+    depends_on:
+      payments-db:
+        condition: service_healthy
+
+  inventory:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/inventory/Dockerfile
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@inventory-db:5432/inventory?sslmode=disable
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY}
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+
+  # The only published port; every other service is reachable only on the compose network.
+  gateway:
+    <<: *service
+    build:
+      context: services/gateway
+    environment:
+      USERS_SERVICE_URL: http://users:50051
+      ORDERS_SERVICE_URL: http://orders:50052
+      PAYMENTS_SERVICE_URL: http://payments:50053
+      INVENTORY_SERVICE_URL: http://inventory:50054
+    ports:
+      - "3000:3000"
+    depends_on:
+      - users
+      - orders
+      - payments
+      - inventory
+
+volumes:
+  users-db-data:
+  orders-db-data:
+  payments-db-data:
+  inventory-db-data:
