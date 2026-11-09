@@ -3,11 +3,14 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/francispowlesland/microservices-app-go/services/orders/internal/service"
 )
@@ -64,7 +67,7 @@ func (f *fakeStore) Update(_ context.Context, o service.Order) (service.Order, e
 	if !ok {
 		return service.Order{}, service.ErrNotFound
 	}
-	o.CreatedAt = old.CreatedAt
+	o.CreatedAt, o.TotalCents, o.Lines = old.CreatedAt, old.TotalCents, old.Lines
 	f.rows[o.ID] = o
 	return o, nil
 }
@@ -120,3 +123,57 @@ func before(o service.Order, at time.Time, id uuid.UUID) bool {
 }
 
 var errBoom = errors.New("pq: connection refused at 10.0.0.1")
+
+// fakeInv is an in-memory service.Inventory with the same all-or-nothing Reserve as the real one.
+type fakeInv struct {
+	mu       sync.Mutex
+	stock    map[string]int32
+	price    map[string]int64
+	released [][]service.Line
+	failWith error // returned by Reserve
+	relErr   error // returned by Release
+}
+
+func newFakeInv() *fakeInv {
+	return &fakeInv{
+		stock: map[string]int32{"WIDGET": 1000, "GADGET": 5},
+		price: map[string]int64{"WIDGET": 1000, "GADGET": 250},
+	}
+}
+
+func (f *fakeInv) Reserve(_ context.Context, lines []service.Line) ([]service.Line, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+	out := make([]service.Line, len(lines))
+	for i, l := range lines {
+		have, ok := f.stock[l.SKU]
+		if !ok {
+			return nil, status.Error(codes.NotFound, fmt.Sprintf("%s: unknown sku", l.SKU))
+		}
+		if have < l.Quantity {
+			return nil, status.Error(codes.FailedPrecondition, fmt.Sprintf("%s: insufficient stock", l.SKU))
+		}
+		l.UnitPriceCents = f.price[l.SKU]
+		out[i] = l
+	}
+	for _, l := range lines {
+		f.stock[l.SKU] -= l.Quantity
+	}
+	return out, nil
+}
+
+func (f *fakeInv) Release(_ context.Context, lines []service.Line) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.relErr != nil {
+		return f.relErr
+	}
+	for _, l := range lines {
+		f.stock[l.SKU] += l.Quantity
+	}
+	f.released = append(f.released, lines)
+	return nil
+}

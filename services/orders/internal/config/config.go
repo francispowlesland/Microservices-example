@@ -14,6 +14,10 @@ type Config struct {
 	DatabaseURL  string
 	AppEnv       string
 	JWTPublicKey string
+	// InventoryAddr is the inventory gRPC address orders reserves stock from.
+	InventoryAddr string
+	// ServicePrivateKey signs the service tokens inventory accepts for ReserveStock/ReleaseStock.
+	ServicePrivateKey string
 }
 
 // Load reads configuration from environment variables.
@@ -26,10 +30,16 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	svcKey, err := config.Required("SERVICE_PRIVATE_KEY")
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
-		GRPCAddr:     config.String("GRPC_ADDR", DefaultAddr),
-		DatabaseURL:  dbURL,
-		AppEnv:       config.String("APP_ENV", "development"),
-		JWTPublicKey: pub,
+		GRPCAddr:          config.String("GRPC_ADDR", DefaultAddr),
+		DatabaseURL:       dbURL,
+		AppEnv:            config.String("APP_ENV", "development"),
+		JWTPublicKey:      pub,
+		InventoryAddr:     config.String("INVENTORY_ADDR", "localhost:50054"),
+		ServicePrivateKey: svcKey,
 	}, nil
 }

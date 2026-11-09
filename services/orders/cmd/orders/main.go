@@ -18,6 +18,7 @@ import (
 	"github.com/francispowlesland/microservices-app-go/internal/platform/grpcx"
 	"github.com/francispowlesland/microservices-app-go/internal/platform/pgxutil"
 	ordersconfig "github.com/francispowlesland/microservices-app-go/services/orders/internal/config"
+	inventoryclient "github.com/francispowlesland/microservices-app-go/services/orders/internal/inventory"
 	"github.com/francispowlesland/microservices-app-go/services/orders/internal/service"
 	"github.com/francispowlesland/microservices-app-go/services/orders/internal/store"
 	"github.com/francispowlesland/microservices-app-go/services/orders/migrations"
@@ -61,6 +62,16 @@ func run(logger *slog.Logger) error {
 	}
 	verifier := authn.NewVerifier(pub, authn.Issuer, authn.Audience)
 
+	svcKey, err := authn.ParsePrivateKeyPEM([]byte(cfg.ServicePrivateKey))
+	if err != nil {
+		return fmt.Errorf("SERVICE_PRIVATE_KEY: %w", err)
+	}
+	invConn, err := inventoryclient.Dial(cfg.InventoryAddr)
+	if err != nil {
+		return fmt.Errorf("INVENTORY_ADDR: %w", err)
+	}
+	defer invConn.Close()
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -73,13 +84,14 @@ func run(logger *slog.Logger) error {
 	}
 	defer pool.Close()
 
-	srv := service.New(store.New(pool), logger)
+	srv := service.New(store.New(pool), inventoryclient.New(invConn, authn.NewServiceSigner(svcKey, time.Minute)), logger)
 	logger.Info("orders listening", slog.String("addr", cfg.GRPCAddr), slog.String("env", cfg.AppEnv))
 	return grpcx.Run(ctx, grpcx.Config{
-		Addr:         cfg.GRPCAddr,
-		AppEnv:       cfg.AppEnv,
-		AuthVerifier: verifier, // no public methods: default deny
-		Logger:       logger,
+		Addr:          cfg.GRPCAddr,
+		AppEnv:        cfg.AppEnv,
+		AuthVerifier:  verifier,
+		PublicMethods: map[string]bool{"/grpc.health.v1.Health/Check": true},
+		Logger:        logger,
 	}, func(s *grpc.Server) {
 		ordersv1.RegisterOrdersServiceServer(s, srv)
 	})

@@ -35,8 +35,9 @@ func TestCRUD(t *testing.T) {
 	s, pool := newStore(t)
 	ctx := context.Background()
 	id, user := uuid.New(), uuid.New()
+	lines := []service.Line{{SKU: "B-1", Quantity: 2, UnitPriceCents: 30}, {SKU: "A-1", Quantity: 1, UnitPriceCents: 40}}
 
-	created, err := s.Create(ctx, service.Order{ID: id, UserID: user, TotalCents: 100})
+	created, err := s.Create(ctx, service.Order{ID: id, UserID: user, TotalCents: 100, Lines: lines})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +49,9 @@ func TestCRUD(t *testing.T) {
 	if err != nil || got.UserID != user || got.TotalCents != 100 {
 		t.Fatalf("get = %+v, %v", got, err)
 	}
+	if len(got.Lines) != 2 || got.Lines[0] != lines[0] || got.Lines[1] != lines[1] {
+		t.Fatalf("lines = %+v, want %+v in order", got.Lines, lines)
+	}
 
 	var before time.Time
 	if err := pool.QueryRow(ctx, `SELECT updated_at FROM orders WHERE id=$1`, id).Scan(&before); err != nil {
@@ -55,8 +59,9 @@ func TestCRUD(t *testing.T) {
 	}
 	time.Sleep(5 * time.Millisecond)
 	other := uuid.New()
-	upd, err := s.Update(ctx, service.Order{ID: id, UserID: other, TotalCents: 7})
-	if err != nil || upd.UserID != other || upd.TotalCents != 7 || !upd.CreatedAt.Equal(created.CreatedAt) {
+	// Total and lines passed to Update are ignored: only the user changes.
+	upd, err := s.Update(ctx, service.Order{ID: id, UserID: other, TotalCents: 7, Lines: []service.Line{{SKU: "X", Quantity: 1}}})
+	if err != nil || upd.UserID != other || upd.TotalCents != 100 || len(upd.Lines) != 2 || !upd.CreatedAt.Equal(created.CreatedAt) {
 		t.Fatalf("update = %+v, %v", upd, err)
 	}
 	var after time.Time
@@ -73,6 +78,10 @@ func TestCRUD(t *testing.T) {
 	if _, err := s.Get(ctx, id); err != service.ErrNotFound {
 		t.Errorf("get after delete = %v", err)
 	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM order_lines WHERE order_id=$1`, id).Scan(&n); err != nil || n != 0 {
+		t.Errorf("lines left after delete: %d, %v", n, err)
+	}
 	if err := s.Delete(ctx, id); err != service.ErrNotFound {
 		t.Errorf("delete missing = %v", err)
 	}
@@ -81,18 +90,54 @@ func TestCRUD(t *testing.T) {
 	}
 }
 
-func TestCheckConstraint(t *testing.T) {
-	s, _ := newStore(t)
+func TestCheckConstraints(t *testing.T) {
+	s, pool := newStore(t)
 	ctx := context.Background()
 	if _, err := s.Create(ctx, service.Order{ID: uuid.New(), UserID: uuid.New(), TotalCents: -1}); err == nil {
 		t.Fatal("negative total accepted on create")
 	}
+	// A bad line must roll back the order row too.
 	id := uuid.New()
-	if _, err := s.Create(ctx, service.Order{ID: id, UserID: uuid.New(), TotalCents: 1}); err != nil {
+	if _, err := s.Create(ctx, service.Order{ID: id, UserID: uuid.New(), TotalCents: 1,
+		Lines: []service.Line{{SKU: "OK-1", Quantity: 1}, {SKU: "BAD-1", Quantity: 0}}}); err == nil {
+		t.Fatal("zero-quantity line accepted")
+	}
+	if _, err := s.Get(ctx, id); err != service.ErrNotFound {
+		t.Errorf("order survived a failed line insert: %v", err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM order_lines`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("stray lines: %d, %v", n, err)
+	}
+}
+
+func TestListLoadsLines(t *testing.T) {
+	s, _ := newStore(t)
+	ctx := context.Background()
+	user := uuid.New()
+	for i := 0; i < 3; i++ {
+		lines := make([]service.Line, i+1)
+		for j := range lines {
+			lines[j] = service.Line{SKU: "S-" + string(rune('A'+j)), Quantity: int32(j + 1), UnitPriceCents: 10}
+		}
+		if _, err := s.Create(ctx, service.Order{ID: uuid.New(), UserID: user, TotalCents: 1, Lines: lines}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// An order with no lines (placed before lines existed) lists fine.
+	if _, err := s.Create(ctx, service.Order{ID: uuid.New(), UserID: user, TotalCents: 5}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Update(ctx, service.Order{ID: id, UserID: uuid.New(), TotalCents: -1}); err == nil {
-		t.Fatal("negative total accepted on update")
+	rows, err := s.List(ctx, service.ListParams{UserID: &user, Limit: 10})
+	if err != nil || len(rows) != 4 {
+		t.Fatalf("rows=%d err=%v", len(rows), err)
+	}
+	counts := map[int]bool{}
+	for _, r := range rows {
+		counts[len(r.Lines)] = true
+	}
+	if !counts[0] || !counts[1] || !counts[2] || !counts[3] {
+		t.Errorf("line counts = %v, want 0,1,2,3", counts)
 	}
 }
 

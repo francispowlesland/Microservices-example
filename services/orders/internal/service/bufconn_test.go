@@ -32,7 +32,7 @@ func TestBufconnAuthFlow(t *testing.T) {
 
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(authn.UnaryInterceptor(verifier, nil)))
-	ordersv1.RegisterOrdersServiceServer(srv, service.New(newFakeStore(), nil))
+	ordersv1.RegisterOrdersServiceServer(srv, service.New(newFakeStore(), newFakeInv(), nil))
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 
@@ -56,7 +56,7 @@ func TestBufconnAuthFlow(t *testing.T) {
 	customerB := withToken(bob, "customer")
 	admin := withToken(root, "admin")
 
-	created, err := client.CreateOrder(customerA, &ordersv1.CreateOrderRequest{Order: &ordersv1.Order{TotalCents: 4200}})
+	created, err := client.CreateOrder(customerA, &ordersv1.CreateOrderRequest{Order: &ordersv1.Order{Lines: []*ordersv1.OrderLine{{Sku: "WIDGET", Quantity: 4}, {Sku: "GADGET", Quantity: 1}}}})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestBufconnAuthFlow(t *testing.T) {
 		t.Fatalf("user_id = %s", created.GetOrder().GetUserId())
 	}
 
-	if got, err := client.GetOrder(customerA, &ordersv1.GetOrderRequest{Id: id}); err != nil || got.GetOrder().GetTotalCents() != 4200 {
+	if got, err := client.GetOrder(customerA, &ordersv1.GetOrderRequest{Id: id}); err != nil || got.GetOrder().GetTotalCents() != 4250 || len(got.GetOrder().GetLines()) != 2 {
 		t.Fatalf("owner get: %v %v", got, err)
 	}
 	_, err = client.GetOrder(customerB, &ordersv1.GetOrderRequest{Id: id})
