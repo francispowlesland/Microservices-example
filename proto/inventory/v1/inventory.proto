@@ -6,6 +6,7 @@ message InventoryItem {
   string id = 1;
   string sku = 2;
   int32 quantity = 3;
+  int64 price_cents = 4;
 }
 
 message CreateInventoryItemRequest {
@@ -48,10 +49,37 @@ message ListInventoryItemsResponse {
   string next_page_token = 2;
 }
 
+// One SKU and quantity. In a ReserveStock response, unit_price_cents is set by the server;
+// it is ignored in requests and in ReleaseStock.
+message StockLine {
+  string sku = 1;
+  int32 quantity = 2;
+  int64 unit_price_cents = 3;
+}
+
+message ReserveStockRequest {
+  repeated StockLine lines = 1;
+}
+
+// Lines come back in request order with the SKU normalised and the unit price filled in.
+message ReserveStockResponse {
+  repeated StockLine lines = 1;
+}
+
+message ReleaseStockRequest {
+  repeated StockLine lines = 1;
+}
+
+message ReleaseStockResponse {}
+
 service InventoryService {
   rpc CreateInventoryItem(CreateInventoryItemRequest) returns (CreateInventoryItemResponse);
   rpc GetInventoryItem(GetInventoryItemRequest) returns (GetInventoryItemResponse);
   rpc UpdateInventoryItem(UpdateInventoryItemRequest) returns (UpdateInventoryItemResponse);
   rpc DeleteInventoryItem(DeleteInventoryItemRequest) returns (DeleteInventoryItemResponse);
   rpc ListInventoryItems(ListInventoryItemsRequest) returns (ListInventoryItemsResponse);
+  // Service identity only. Takes stock for every line or none.
+  rpc ReserveStock(ReserveStockRequest) returns (ReserveStockResponse);
+  // Service identity only. Puts stock back for every line or none.
+  rpc ReleaseStock(ReleaseStockRequest) returns (ReleaseStockResponse);
 }

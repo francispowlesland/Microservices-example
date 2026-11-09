@@ -2,10 +2,19 @@ syntax = "proto3";
 
 package orders.v1;
 
+message OrderLine {
+  string sku = 1;
+  int32 quantity = 2;
+  // Set by the server from inventory. Ignored in requests.
+  int64 unit_price_cents = 3;
+}
+
 message Order {
   string id = 1;
   string user_id = 2;
+  // Computed by the server from lines on create. Ignored on update.
   int64 total_cents = 3;
+  repeated OrderLine lines = 4;
 }
 
 message CreateOrderRequest {

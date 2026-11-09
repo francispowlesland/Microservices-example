@@ -10,7 +10,36 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file orders/v1/orders.proto.
  */
 export const file_orders_v1_orders: GenFile = /*@__PURE__*/
-  fileDesc("ChZvcmRlcnMvdjEvb3JkZXJzLnByb3RvEglvcmRlcnMudjEiOQoFT3JkZXISCgoCaWQYASABKAkSDwoHdXNlcl9pZBgCIAEoCRITCgt0b3RhbF9jZW50cxgDIAEoAyI1ChJDcmVhdGVPcmRlclJlcXVlc3QSHwoFb3JkZXIYASABKAsyEC5vcmRlcnMudjEuT3JkZXIiNgoTQ3JlYXRlT3JkZXJSZXNwb25zZRIfCgVvcmRlchgBIAEoCzIQLm9yZGVycy52MS5PcmRlciIdCg9HZXRPcmRlclJlcXVlc3QSCgoCaWQYASABKAkiMwoQR2V0T3JkZXJSZXNwb25zZRIfCgVvcmRlchgBIAEoCzIQLm9yZGVycy52MS5PcmRlciI1ChJVcGRhdGVPcmRlclJlcXVlc3QSHwoFb3JkZXIYASABKAsyEC5vcmRlcnMudjEuT3JkZXIiNgoTVXBkYXRlT3JkZXJSZXNwb25zZRIfCgVvcmRlchgBIAEoCzIQLm9yZGVycy52MS5PcmRlciIgChJEZWxldGVPcmRlclJlcXVlc3QSCgoCaWQYASABKAkiFQoTRGVsZXRlT3JkZXJSZXNwb25zZSJLChFMaXN0T3JkZXJzUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCRIPCgd1c2VyX2lkGAMgASgJIk8KEkxpc3RPcmRlcnNSZXNwb25zZRIgCgZvcmRlcnMYASADKAsyEC5vcmRlcnMudjEuT3JkZXISFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJMokDCg1PcmRlcnNTZXJ2aWNlEkwKC0NyZWF0ZU9yZGVyEh0ub3JkZXJzLnYxLkNyZWF0ZU9yZGVyUmVxdWVzdBoeLm9yZGVycy52MS5DcmVhdGVPcmRlclJlc3BvbnNlEkMKCEdldE9yZGVyEhoub3JkZXJzLnYxLkdldE9yZGVyUmVxdWVzdBobLm9yZGVycy52MS5HZXRPcmRlclJlc3BvbnNlEkwKC1VwZGF0ZU9yZGVyEh0ub3JkZXJzLnYxLlVwZGF0ZU9yZGVyUmVxdWVzdBoeLm9yZGVycy52MS5VcGRhdGVPcmRlclJlc3BvbnNlEkwKC0RlbGV0ZU9yZGVyEh0ub3JkZXJzLnYxLkRlbGV0ZU9yZGVyUmVxdWVzdBoeLm9yZGVycy52MS5EZWxldGVPcmRlclJlc3BvbnNlEkkKCkxpc3RPcmRlcnMSHC5vcmRlcnMudjEuTGlzdE9yZGVyc1JlcXVlc3QaHS5vcmRlcnMudjEuTGlzdE9yZGVyc1Jlc3BvbnNlQq4BCg1jb20ub3JkZXJzLnYxQgtPcmRlcnNQcm90b1ABWktnaXRodWIuY29tL2ZyYW5jaXNwb3dsZXNsYW5kL21pY3Jvc2VydmljZXMtYXBwLWdvL2dlbi9nby9vcmRlcnMvdjE7b3JkZXJzdjGiAgNPWFiqAglPcmRlcnMuVjHKAglPcmRlcnNcVjHiAhVPcmRlcnNcVjFcR1BCTWV0YWRhdGHqAgpPcmRlcnM6OlYxYgZwcm90bzM");
+  fileDesc("ChZvcmRlcnMvdjEvb3JkZXJzLnByb3RvEglvcmRlcnMudjEiRAoJT3JkZXJMaW5lEgsKA3NrdRgBIAEoCRIQCghxdWFudGl0eRgCIAEoBRIYChB1bml0X3ByaWNlX2NlbnRzGAMgASgDIl4KBU9yZGVyEgoKAmlkGAEgASgJEg8KB3VzZXJfaWQYAiABKAkSEwoLdG90YWxfY2VudHMYAyABKAMSIwoFbGluZXMYBCADKAsyFC5vcmRlcnMudjEuT3JkZXJMaW5lIjUKEkNyZWF0ZU9yZGVyUmVxdWVzdBIfCgVvcmRlchgBIAEoCzIQLm9yZGVycy52MS5PcmRlciI2ChNDcmVhdGVPcmRlclJlc3BvbnNlEh8KBW9yZGVyGAEgASgLMhAub3JkZXJzLnYxLk9yZGVyIh0KD0dldE9yZGVyUmVxdWVzdBIKCgJpZBgBIAEoCSIzChBHZXRPcmRlclJlc3BvbnNlEh8KBW9yZGVyGAEgASgLMhAub3JkZXJzLnYxLk9yZGVyIjUKElVwZGF0ZU9yZGVyUmVxdWVzdBIfCgVvcmRlchgBIAEoCzIQLm9yZGVycy52MS5PcmRlciI2ChNVcGRhdGVPcmRlclJlc3BvbnNlEh8KBW9yZGVyGAEgASgLMhAub3JkZXJzLnYxLk9yZGVyIiAKEkRlbGV0ZU9yZGVyUmVxdWVzdBIKCgJpZBgBIAEoCSIVChNEZWxldGVPcmRlclJlc3BvbnNlIksKEUxpc3RPcmRlcnNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJEg8KB3VzZXJfaWQYAyABKAkiTwoSTGlzdE9yZGVyc1Jlc3BvbnNlEiAKBm9yZGVycxgBIAMoCzIQLm9yZGVycy52MS5PcmRlchIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkyiQMKDU9yZGVyc1NlcnZpY2USTAoLQ3JlYXRlT3JkZXISHS5vcmRlcnMudjEuQ3JlYXRlT3JkZXJSZXF1ZXN0Gh4ub3JkZXJzLnYxLkNyZWF0ZU9yZGVyUmVzcG9uc2USQwoIR2V0T3JkZXISGi5vcmRlcnMudjEuR2V0T3JkZXJSZXF1ZXN0Ghsub3JkZXJzLnYxLkdldE9yZGVyUmVzcG9uc2USTAoLVXBkYXRlT3JkZXISHS5vcmRlcnMudjEuVXBkYXRlT3JkZXJSZXF1ZXN0Gh4ub3JkZXJzLnYxLlVwZGF0ZU9yZGVyUmVzcG9uc2USTAoLRGVsZXRlT3JkZXISHS5vcmRlcnMudjEuRGVsZXRlT3JkZXJSZXF1ZXN0Gh4ub3JkZXJzLnYxLkRlbGV0ZU9yZGVyUmVzcG9uc2USSQoKTGlzdE9yZGVycxIcLm9yZGVycy52MS5MaXN0T3JkZXJzUmVxdWVzdBodLm9yZGVycy52MS5MaXN0T3JkZXJzUmVzcG9uc2VCrgEKDWNvbS5vcmRlcnMudjFCC09yZGVyc1Byb3RvUAFaS2dpdGh1Yi5jb20vZnJhbmNpc3Bvd2xlc2xhbmQvbWljcm9zZXJ2aWNlcy1hcHAtZ28vZ2VuL2dvL29yZGVycy92MTtvcmRlcnN2MaICA09YWKoCCU9yZGVycy5WMcoCCU9yZGVyc1xWMeICFU9yZGVyc1xWMVxHUEJNZXRhZGF0YeoCCk9yZGVyczo6VjFiBnByb3RvMw");
+
+/**
+ * @generated from message orders.v1.OrderLine
+ */
+export type OrderLine = Message<"orders.v1.OrderLine"> & {
+  /**
+   * @generated from field: string sku = 1;
+   */
+  sku: string;
+
+  /**
+   * @generated from field: int32 quantity = 2;
+   */
+  quantity: number;
+
+  /**
+   * Set by the server from inventory. Ignored in requests.
+   *
+   * @generated from field: int64 unit_price_cents = 3;
+   */
+  unitPriceCents: bigint;
+};
+
+/**
+ * Describes the message orders.v1.OrderLine.
+ * Use `create(OrderLineSchema)` to create a new message.
+ */
+export const OrderLineSchema: GenMessage<OrderLine> = /*@__PURE__*/
+  messageDesc(file_orders_v1_orders, 0);
 
 /**
  * @generated from message orders.v1.Order
@@ -27,9 +56,16 @@ export type Order = Message<"orders.v1.Order"> & {
   userId: string;
 
   /**
+   * Computed by the server from lines on create. Ignored on update.
+   *
    * @generated from field: int64 total_cents = 3;
    */
   totalCents: bigint;
+
+  /**
+   * @generated from field: repeated orders.v1.OrderLine lines = 4;
+   */
+  lines: OrderLine[];
 };
 
 /**
@@ -37,7 +73,7 @@ export type Order = Message<"orders.v1.Order"> & {
  * Use `create(OrderSchema)` to create a new message.
  */
 export const OrderSchema: GenMessage<Order> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 0);
+  messageDesc(file_orders_v1_orders, 1);
 
 /**
  * @generated from message orders.v1.CreateOrderRequest
@@ -54,7 +90,7 @@ export type CreateOrderRequest = Message<"orders.v1.CreateOrderRequest"> & {
  * Use `create(CreateOrderRequestSchema)` to create a new message.
  */
 export const CreateOrderRequestSchema: GenMessage<CreateOrderRequest> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 1);
+  messageDesc(file_orders_v1_orders, 2);
 
 /**
  * @generated from message orders.v1.CreateOrderResponse
@@ -71,7 +107,7 @@ export type CreateOrderResponse = Message<"orders.v1.CreateOrderResponse"> & {
  * Use `create(CreateOrderResponseSchema)` to create a new message.
  */
 export const CreateOrderResponseSchema: GenMessage<CreateOrderResponse> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 2);
+  messageDesc(file_orders_v1_orders, 3);
 
 /**
  * @generated from message orders.v1.GetOrderRequest
@@ -88,7 +124,7 @@ export type GetOrderRequest = Message<"orders.v1.GetOrderRequest"> & {
  * Use `create(GetOrderRequestSchema)` to create a new message.
  */
 export const GetOrderRequestSchema: GenMessage<GetOrderRequest> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 3);
+  messageDesc(file_orders_v1_orders, 4);
 
 /**
  * @generated from message orders.v1.GetOrderResponse
@@ -105,7 +141,7 @@ export type GetOrderResponse = Message<"orders.v1.GetOrderResponse"> & {
  * Use `create(GetOrderResponseSchema)` to create a new message.
  */
 export const GetOrderResponseSchema: GenMessage<GetOrderResponse> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 4);
+  messageDesc(file_orders_v1_orders, 5);
 
 /**
  * @generated from message orders.v1.UpdateOrderRequest
@@ -122,7 +158,7 @@ export type UpdateOrderRequest = Message<"orders.v1.UpdateOrderRequest"> & {
  * Use `create(UpdateOrderRequestSchema)` to create a new message.
  */
 export const UpdateOrderRequestSchema: GenMessage<UpdateOrderRequest> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 5);
+  messageDesc(file_orders_v1_orders, 6);
 
 /**
  * @generated from message orders.v1.UpdateOrderResponse
@@ -139,7 +175,7 @@ export type UpdateOrderResponse = Message<"orders.v1.UpdateOrderResponse"> & {
  * Use `create(UpdateOrderResponseSchema)` to create a new message.
  */
 export const UpdateOrderResponseSchema: GenMessage<UpdateOrderResponse> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 6);
+  messageDesc(file_orders_v1_orders, 7);
 
 /**
  * @generated from message orders.v1.DeleteOrderRequest
@@ -156,7 +192,7 @@ export type DeleteOrderRequest = Message<"orders.v1.DeleteOrderRequest"> & {
  * Use `create(DeleteOrderRequestSchema)` to create a new message.
  */
 export const DeleteOrderRequestSchema: GenMessage<DeleteOrderRequest> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 7);
+  messageDesc(file_orders_v1_orders, 8);
 
 /**
  * @generated from message orders.v1.DeleteOrderResponse
@@ -169,7 +205,7 @@ export type DeleteOrderResponse = Message<"orders.v1.DeleteOrderResponse"> & {
  * Use `create(DeleteOrderResponseSchema)` to create a new message.
  */
 export const DeleteOrderResponseSchema: GenMessage<DeleteOrderResponse> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 8);
+  messageDesc(file_orders_v1_orders, 9);
 
 /**
  * @generated from message orders.v1.ListOrdersRequest
@@ -198,7 +234,7 @@ export type ListOrdersRequest = Message<"orders.v1.ListOrdersRequest"> & {
  * Use `create(ListOrdersRequestSchema)` to create a new message.
  */
 export const ListOrdersRequestSchema: GenMessage<ListOrdersRequest> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 9);
+  messageDesc(file_orders_v1_orders, 10);
 
 /**
  * @generated from message orders.v1.ListOrdersResponse
@@ -220,7 +256,7 @@ export type ListOrdersResponse = Message<"orders.v1.ListOrdersResponse"> & {
  * Use `create(ListOrdersResponseSchema)` to create a new message.
  */
 export const ListOrdersResponseSchema: GenMessage<ListOrdersResponse> = /*@__PURE__*/
-  messageDesc(file_orders_v1_orders, 10);
+  messageDesc(file_orders_v1_orders, 11);
 
 /**
  * @generated from service orders.v1.OrdersService

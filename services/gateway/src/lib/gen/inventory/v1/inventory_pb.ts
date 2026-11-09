@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file inventory/v1/inventory.proto.
  */
 export const file_inventory_v1_inventory: GenFile = /*@__PURE__*/
-  fileDesc("ChxpbnZlbnRvcnkvdjEvaW52ZW50b3J5LnByb3RvEgxpbnZlbnRvcnkudjEiOgoNSW52ZW50b3J5SXRlbRIKCgJpZBgBIAEoCRILCgNza3UYAiABKAkSEAoIcXVhbnRpdHkYAyABKAUiRwoaQ3JlYXRlSW52ZW50b3J5SXRlbVJlcXVlc3QSKQoEaXRlbRgBIAEoCzIbLmludmVudG9yeS52MS5JbnZlbnRvcnlJdGVtIkgKG0NyZWF0ZUludmVudG9yeUl0ZW1SZXNwb25zZRIpCgRpdGVtGAEgASgLMhsuaW52ZW50b3J5LnYxLkludmVudG9yeUl0ZW0iJQoXR2V0SW52ZW50b3J5SXRlbVJlcXVlc3QSCgoCaWQYASABKAkiRQoYR2V0SW52ZW50b3J5SXRlbVJlc3BvbnNlEikKBGl0ZW0YASABKAsyGy5pbnZlbnRvcnkudjEuSW52ZW50b3J5SXRlbSJHChpVcGRhdGVJbnZlbnRvcnlJdGVtUmVxdWVzdBIpCgRpdGVtGAEgASgLMhsuaW52ZW50b3J5LnYxLkludmVudG9yeUl0ZW0iSAobVXBkYXRlSW52ZW50b3J5SXRlbVJlc3BvbnNlEikKBGl0ZW0YASABKAsyGy5pbnZlbnRvcnkudjEuSW52ZW50b3J5SXRlbSIoChpEZWxldGVJbnZlbnRvcnlJdGVtUmVxdWVzdBIKCgJpZBgBIAEoCSIdChtEZWxldGVJbnZlbnRvcnlJdGVtUmVzcG9uc2UiQgoZTGlzdEludmVudG9yeUl0ZW1zUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJhChpMaXN0SW52ZW50b3J5SXRlbXNSZXNwb25zZRIqCgVpdGVtcxgBIAMoCzIbLmludmVudG9yeS52MS5JbnZlbnRvcnlJdGVtEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCTKiBAoQSW52ZW50b3J5U2VydmljZRJqChNDcmVhdGVJbnZlbnRvcnlJdGVtEiguaW52ZW50b3J5LnYxLkNyZWF0ZUludmVudG9yeUl0ZW1SZXF1ZXN0GikuaW52ZW50b3J5LnYxLkNyZWF0ZUludmVudG9yeUl0ZW1SZXNwb25zZRJhChBHZXRJbnZlbnRvcnlJdGVtEiUuaW52ZW50b3J5LnYxLkdldEludmVudG9yeUl0ZW1SZXF1ZXN0GiYuaW52ZW50b3J5LnYxLkdldEludmVudG9yeUl0ZW1SZXNwb25zZRJqChNVcGRhdGVJbnZlbnRvcnlJdGVtEiguaW52ZW50b3J5LnYxLlVwZGF0ZUludmVudG9yeUl0ZW1SZXF1ZXN0GikuaW52ZW50b3J5LnYxLlVwZGF0ZUludmVudG9yeUl0ZW1SZXNwb25zZRJqChNEZWxldGVJbnZlbnRvcnlJdGVtEiguaW52ZW50b3J5LnYxLkRlbGV0ZUludmVudG9yeUl0ZW1SZXF1ZXN0GikuaW52ZW50b3J5LnYxLkRlbGV0ZUludmVudG9yeUl0ZW1SZXNwb25zZRJnChJMaXN0SW52ZW50b3J5SXRlbXMSJy5pbnZlbnRvcnkudjEuTGlzdEludmVudG9yeUl0ZW1zUmVxdWVzdBooLmludmVudG9yeS52MS5MaXN0SW52ZW50b3J5SXRlbXNSZXNwb25zZULGAQoQY29tLmludmVudG9yeS52MUIOSW52ZW50b3J5UHJvdG9QAVpRZ2l0aHViLmNvbS9mcmFuY2lzcG93bGVzbGFuZC9taWNyb3NlcnZpY2VzLWFwcC1nby9nZW4vZ28vaW52ZW50b3J5L3YxO2ludmVudG9yeXYxogIDSVhYqgIMSW52ZW50b3J5LlYxygIMSW52ZW50b3J5XFYx4gIYSW52ZW50b3J5XFYxXEdQQk1ldGFkYXRh6gINSW52ZW50b3J5OjpWMWIGcHJvdG8z");
+  fileDesc("ChxpbnZlbnRvcnkvdjEvaW52ZW50b3J5LnByb3RvEgxpbnZlbnRvcnkudjEiTwoNSW52ZW50b3J5SXRlbRIKCgJpZBgBIAEoCRILCgNza3UYAiABKAkSEAoIcXVhbnRpdHkYAyABKAUSEwoLcHJpY2VfY2VudHMYBCABKAMiRwoaQ3JlYXRlSW52ZW50b3J5SXRlbVJlcXVlc3QSKQoEaXRlbRgBIAEoCzIbLmludmVudG9yeS52MS5JbnZlbnRvcnlJdGVtIkgKG0NyZWF0ZUludmVudG9yeUl0ZW1SZXNwb25zZRIpCgRpdGVtGAEgASgLMhsuaW52ZW50b3J5LnYxLkludmVudG9yeUl0ZW0iJQoXR2V0SW52ZW50b3J5SXRlbVJlcXVlc3QSCgoCaWQYASABKAkiRQoYR2V0SW52ZW50b3J5SXRlbVJlc3BvbnNlEikKBGl0ZW0YASABKAsyGy5pbnZlbnRvcnkudjEuSW52ZW50b3J5SXRlbSJHChpVcGRhdGVJbnZlbnRvcnlJdGVtUmVxdWVzdBIpCgRpdGVtGAEgASgLMhsuaW52ZW50b3J5LnYxLkludmVudG9yeUl0ZW0iSAobVXBkYXRlSW52ZW50b3J5SXRlbVJlc3BvbnNlEikKBGl0ZW0YASABKAsyGy5pbnZlbnRvcnkudjEuSW52ZW50b3J5SXRlbSIoChpEZWxldGVJbnZlbnRvcnlJdGVtUmVxdWVzdBIKCgJpZBgBIAEoCSIdChtEZWxldGVJbnZlbnRvcnlJdGVtUmVzcG9uc2UiQgoZTGlzdEludmVudG9yeUl0ZW1zUmVxdWVzdBIRCglwYWdlX3NpemUYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJhChpMaXN0SW52ZW50b3J5SXRlbXNSZXNwb25zZRIqCgVpdGVtcxgBIAMoCzIbLmludmVudG9yeS52MS5JbnZlbnRvcnlJdGVtEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSJECglTdG9ja0xpbmUSCwoDc2t1GAEgASgJEhAKCHF1YW50aXR5GAIgASgFEhgKEHVuaXRfcHJpY2VfY2VudHMYAyABKAMiPQoTUmVzZXJ2ZVN0b2NrUmVxdWVzdBImCgVsaW5lcxgBIAMoCzIXLmludmVudG9yeS52MS5TdG9ja0xpbmUiPgoUUmVzZXJ2ZVN0b2NrUmVzcG9uc2USJgoFbGluZXMYASADKAsyFy5pbnZlbnRvcnkudjEuU3RvY2tMaW5lIj0KE1JlbGVhc2VTdG9ja1JlcXVlc3QSJgoFbGluZXMYASADKAsyFy5pbnZlbnRvcnkudjEuU3RvY2tMaW5lIhYKFFJlbGVhc2VTdG9ja1Jlc3BvbnNlMtAFChBJbnZlbnRvcnlTZXJ2aWNlEmoKE0NyZWF0ZUludmVudG9yeUl0ZW0SKC5pbnZlbnRvcnkudjEuQ3JlYXRlSW52ZW50b3J5SXRlbVJlcXVlc3QaKS5pbnZlbnRvcnkudjEuQ3JlYXRlSW52ZW50b3J5SXRlbVJlc3BvbnNlEmEKEEdldEludmVudG9yeUl0ZW0SJS5pbnZlbnRvcnkudjEuR2V0SW52ZW50b3J5SXRlbVJlcXVlc3QaJi5pbnZlbnRvcnkudjEuR2V0SW52ZW50b3J5SXRlbVJlc3BvbnNlEmoKE1VwZGF0ZUludmVudG9yeUl0ZW0SKC5pbnZlbnRvcnkudjEuVXBkYXRlSW52ZW50b3J5SXRlbVJlcXVlc3QaKS5pbnZlbnRvcnkudjEuVXBkYXRlSW52ZW50b3J5SXRlbVJlc3BvbnNlEmoKE0RlbGV0ZUludmVudG9yeUl0ZW0SKC5pbnZlbnRvcnkudjEuRGVsZXRlSW52ZW50b3J5SXRlbVJlcXVlc3QaKS5pbnZlbnRvcnkudjEuRGVsZXRlSW52ZW50b3J5SXRlbVJlc3BvbnNlEmcKEkxpc3RJbnZlbnRvcnlJdGVtcxInLmludmVudG9yeS52MS5MaXN0SW52ZW50b3J5SXRlbXNSZXF1ZXN0GiguaW52ZW50b3J5LnYxLkxpc3RJbnZlbnRvcnlJdGVtc1Jlc3BvbnNlElUKDFJlc2VydmVTdG9jaxIhLmludmVudG9yeS52MS5SZXNlcnZlU3RvY2tSZXF1ZXN0GiIuaW52ZW50b3J5LnYxLlJlc2VydmVTdG9ja1Jlc3BvbnNlElUKDFJlbGVhc2VTdG9jaxIhLmludmVudG9yeS52MS5SZWxlYXNlU3RvY2tSZXF1ZXN0GiIuaW52ZW50b3J5LnYxLlJlbGVhc2VTdG9ja1Jlc3BvbnNlQsYBChBjb20uaW52ZW50b3J5LnYxQg5JbnZlbnRvcnlQcm90b1ABWlFnaXRodWIuY29tL2ZyYW5jaXNwb3dsZXNsYW5kL21pY3Jvc2VydmljZXMtYXBwLWdvL2dlbi9nby9pbnZlbnRvcnkvdjE7aW52ZW50b3J5djGiAgNJWFiqAgxJbnZlbnRvcnkuVjHKAgxJbnZlbnRvcnlcVjHiAhhJbnZlbnRvcnlcVjFcR1BCTWV0YWRhdGHqAg1JbnZlbnRvcnk6OlYxYgZwcm90bzM");
 
 /**
  * @generated from message inventory.v1.InventoryItem
@@ -30,6 +30,11 @@ export type InventoryItem = Message<"inventory.v1.InventoryItem"> & {
    * @generated from field: int32 quantity = 3;
    */
   quantity: number;
+
+  /**
+   * @generated from field: int64 price_cents = 4;
+   */
+  priceCents: bigint;
 };
 
 /**
@@ -216,6 +221,102 @@ export const ListInventoryItemsResponseSchema: GenMessage<ListInventoryItemsResp
   messageDesc(file_inventory_v1_inventory, 10);
 
 /**
+ * One SKU and quantity. In a ReserveStock response, unit_price_cents is set by the server;
+ * it is ignored in requests and in ReleaseStock.
+ *
+ * @generated from message inventory.v1.StockLine
+ */
+export type StockLine = Message<"inventory.v1.StockLine"> & {
+  /**
+   * @generated from field: string sku = 1;
+   */
+  sku: string;
+
+  /**
+   * @generated from field: int32 quantity = 2;
+   */
+  quantity: number;
+
+  /**
+   * @generated from field: int64 unit_price_cents = 3;
+   */
+  unitPriceCents: bigint;
+};
+
+/**
+ * Describes the message inventory.v1.StockLine.
+ * Use `create(StockLineSchema)` to create a new message.
+ */
+export const StockLineSchema: GenMessage<StockLine> = /*@__PURE__*/
+  messageDesc(file_inventory_v1_inventory, 11);
+
+/**
+ * @generated from message inventory.v1.ReserveStockRequest
+ */
+export type ReserveStockRequest = Message<"inventory.v1.ReserveStockRequest"> & {
+  /**
+   * @generated from field: repeated inventory.v1.StockLine lines = 1;
+   */
+  lines: StockLine[];
+};
+
+/**
+ * Describes the message inventory.v1.ReserveStockRequest.
+ * Use `create(ReserveStockRequestSchema)` to create a new message.
+ */
+export const ReserveStockRequestSchema: GenMessage<ReserveStockRequest> = /*@__PURE__*/
+  messageDesc(file_inventory_v1_inventory, 12);
+
+/**
+ * Lines come back in request order with the SKU normalised and the unit price filled in.
+ *
+ * @generated from message inventory.v1.ReserveStockResponse
+ */
+export type ReserveStockResponse = Message<"inventory.v1.ReserveStockResponse"> & {
+  /**
+   * @generated from field: repeated inventory.v1.StockLine lines = 1;
+   */
+  lines: StockLine[];
+};
+
+/**
+ * Describes the message inventory.v1.ReserveStockResponse.
+ * Use `create(ReserveStockResponseSchema)` to create a new message.
+ */
+export const ReserveStockResponseSchema: GenMessage<ReserveStockResponse> = /*@__PURE__*/
+  messageDesc(file_inventory_v1_inventory, 13);
+
+/**
+ * @generated from message inventory.v1.ReleaseStockRequest
+ */
+export type ReleaseStockRequest = Message<"inventory.v1.ReleaseStockRequest"> & {
+  /**
+   * @generated from field: repeated inventory.v1.StockLine lines = 1;
+   */
+  lines: StockLine[];
+};
+
+/**
+ * Describes the message inventory.v1.ReleaseStockRequest.
+ * Use `create(ReleaseStockRequestSchema)` to create a new message.
+ */
+export const ReleaseStockRequestSchema: GenMessage<ReleaseStockRequest> = /*@__PURE__*/
+  messageDesc(file_inventory_v1_inventory, 14);
+
+/**
+ * @generated from message inventory.v1.ReleaseStockResponse
+ */
+export type ReleaseStockResponse = Message<"inventory.v1.ReleaseStockResponse"> & {
+};
+
+/**
+ * Describes the message inventory.v1.ReleaseStockResponse.
+ * Use `create(ReleaseStockResponseSchema)` to create a new message.
+ */
+export const ReleaseStockResponseSchema: GenMessage<ReleaseStockResponse> = /*@__PURE__*/
+  messageDesc(file_inventory_v1_inventory, 15);
+
+/**
  * @generated from service inventory.v1.InventoryService
  */
 export const InventoryService: GenService<{
@@ -258,6 +359,26 @@ export const InventoryService: GenService<{
     methodKind: "unary";
     input: typeof ListInventoryItemsRequestSchema;
     output: typeof ListInventoryItemsResponseSchema;
+  },
+  /**
+   * Service identity only. Takes stock for every line or none.
+   *
+   * @generated from rpc inventory.v1.InventoryService.ReserveStock
+   */
+  reserveStock: {
+    methodKind: "unary";
+    input: typeof ReserveStockRequestSchema;
+    output: typeof ReserveStockResponseSchema;
+  },
+  /**
+   * Service identity only. Puts stock back for every line or none.
+   *
+   * @generated from rpc inventory.v1.InventoryService.ReleaseStock
+   */
+  releaseStock: {
+    methodKind: "unary";
+    input: typeof ReleaseStockRequestSchema;
+    output: typeof ReleaseStockResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_inventory_v1_inventory, 0);
