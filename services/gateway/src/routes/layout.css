@@ -1,3 +1,70 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/archivo/wdth.css';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+@theme {
+	--font-sans: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+
+	--color-fog: #e8ecea;
+	--color-paper: #f7f8f6;
+	--color-ink: #14232e;
+	--color-ink-soft: #4b5b63;
+	--color-line: #c9d0cd;
+	--color-signal: #3346e0;
+	--color-signal-deep: #2433b0;
+	--color-moss: #23784a;
+	--color-amber: #9a6400;
+	--color-brick: #b42e24;
+}
+
+@layer base {
+	html {
+		@apply bg-fog text-ink antialiased;
+		font-variant-numeric: tabular-nums;
+	}
+	:focus-visible {
+		@apply outline-2 outline-offset-2 outline-signal;
+	}
+	::selection {
+		@apply bg-signal text-paper;
+	}
+}
+
+@utility condensed {
+	font-stretch: 68%;
+}
+
+@utility semi-condensed {
+	font-stretch: 85%;
+}
+
+@layer components {
+	.field {
+		@apply mt-1 block w-full rounded-[4px] border-line bg-paper text-[15px] text-ink placeholder:text-ink-soft/60 focus:border-signal focus:ring-signal;
+	}
+	.label {
+		@apply block text-sm font-medium text-ink-soft;
+	}
+	.btn {
+		@apply inline-flex items-center justify-center rounded-[4px] bg-signal px-4 py-2 text-[15px] font-semibold text-paper transition-colors hover:bg-signal-deep disabled:opacity-50;
+	}
+	.btn-quiet {
+		@apply inline-flex items-center justify-center rounded-[4px] border border-line bg-paper px-4 py-2 text-[15px] font-medium text-ink transition-colors hover:border-ink;
+	}
+	.btn-danger {
+		@apply inline-flex items-center justify-center rounded-[4px] border border-brick/40 bg-paper px-4 py-2 text-[15px] font-medium text-brick transition-colors hover:bg-brick hover:text-paper;
+	}
+	.link {
+		@apply font-medium text-signal underline decoration-signal/30 underline-offset-4 hover:decoration-signal;
+	}
+	.panel {
+		@apply rounded-md border border-line bg-paper;
+	}
+	.heading {
+		@apply text-5xl leading-none font-extrabold tracking-tight condensed;
+	}
+	.subheading {
+		@apply text-xl font-bold semi-condensed;
+	}
+}
