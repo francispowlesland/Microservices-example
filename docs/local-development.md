@@ -21,7 +21,7 @@ It prints two labelled PEM blocks: a private key (for the users service only) an
 
 ## Run everything with Docker Compose
 
-`docker-compose.yml` refuses to start unless both `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` are set, in the shell environment or a `.env` file next to the compose file. Those are the only variables it requires from you.
+`docker-compose.yml` refuses to start unless `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `SERVICE_PRIVATE_KEY` and `SERVICE_PUBLIC_KEY` are set, in the shell environment or a `.env` file next to the compose file. Those are the only variables it requires from you. `./start.sh` generates all four; the service pair comes from `go run ./tools/keygen service` and is added to an existing `.env` if missing.
 
 A multi-line PEM needs to go in a `.env` file inside double quotes. The keygen output has headings mixed in with the PEM, so you can't just redirect it into `.env`. This does the splitting:
 
@@ -46,14 +46,15 @@ What you get:
 |---|---|
 | `users-db`, `orders-db`, `payments-db`, `inventory-db` | `postgres:17-alpine`, each with a named volume. No published ports. User/password is `postgres`/`postgres`; this is for local use only. |
 | `users` | Gets `JWT_PRIVATE_KEY`, and `APP_ENV=development` (the image defaults to `production`, which the users service rejects because of the log-only mailer). |
-| `orders`, `payments`, `inventory` | Get `JWT_PUBLIC_KEY`. They run with the image default `APP_ENV=production`, which only affects whether gRPC reflection is registered. |
+| `orders`, `payments`, `inventory` | Get `JWT_PUBLIC_KEY`. Orders also gets `SERVICE_PRIVATE_KEY` and `INVENTORY_ADDR`; inventory gets `SERVICE_PUBLIC_KEY`. They run with the image default `APP_ENV=production`, which only affects whether gRPC reflection is registered. |
+| `inventory-seed` | One-shot `psql` run of `services/inventory/seed/dev-seed.sql` once inventory is healthy (ten sample SKUs with prices). Existing SKUs are left alone. Development only; it isn't a migration. |
 | `gateway` | Published on **http://localhost:3000**. Reaches the services via `http://users:50051`, `http://orders:50052`, `http://payments:50053`, `http://inventory:50054`. |
 
 Only the gateway publishes a port. If you want to poke a backend directly from your machine, add a `ports:` entry to that service (via an override file, below).
 
 Services wait for their own database to be healthy, and retry the connection and migrations for up to 30 seconds anyway. Migrations run automatically on startup; nothing else to do.
 
-Compose only waits on the databases' health; the `gateway` simply `depends_on` the four services starting. The Dockerfile `HEALTHCHECK` on **orders** and **inventory** is expected to report `unhealthy` (see [architecture.md](architecture.md)). That doesn't stop anything starting, but don't be alarmed by `docker compose ps`, or do be alarmed and fix it; both are reasonable.
+Services wait on their databases' health; orders also waits for inventory to start, and the seed waits for inventory to be healthy. The `gateway` simply `depends_on` the four services starting.
 
 Stop with `docker compose down`. To also delete the databases, add `-v`. That removes every user, order, payment and inventory item in the stack, so don't do it casually.
 
@@ -115,6 +116,11 @@ Set up the keys as shell variables, then start each service in its own terminal:
 go run ./tools/keygen > /tmp/keys.txt
 export JWT_PRIVATE_KEY="$(sed -n '/BEGIN PRIVATE KEY/,/END PRIVATE KEY/p' /tmp/keys.txt)"
 export JWT_PUBLIC_KEY="$(sed -n '/BEGIN PUBLIC KEY/,/END PUBLIC KEY/p' /tmp/keys.txt)"
+
+# orders -> inventory service tokens
+go run ./tools/keygen service > /tmp/svc-keys.txt
+export SERVICE_PRIVATE_KEY="$(sed -n '/BEGIN PRIVATE KEY/,/END PRIVATE KEY/p' /tmp/svc-keys.txt)"
+export SERVICE_PUBLIC_KEY="$(sed -n '/BEGIN PUBLIC KEY/,/END PUBLIC KEY/p' /tmp/svc-keys.txt)"
 ```
 
 ```sh
@@ -122,7 +128,7 @@ export JWT_PUBLIC_KEY="$(sed -n '/BEGIN PUBLIC KEY/,/END PUBLIC KEY/p' /tmp/keys
 DATABASE_URL='postgres://postgres:postgres@localhost:5432/users?sslmode=disable' \
   go run ./services/users/cmd/users
 
-# the others need the public key
+# orders also needs SERVICE_PRIVATE_KEY (and INVENTORY_ADDR, default localhost:50054); inventory needs SERVICE_PUBLIC_KEY
 DATABASE_URL='postgres://postgres:postgres@localhost:5432/orders?sslmode=disable' \
   go run ./services/orders/cmd/orders
 DATABASE_URL='postgres://postgres:postgres@localhost:5432/payments?sslmode=disable' \

@@ -1,6 +1,6 @@
 # orders
 
-The orders service: a gRPC server implementing `orders.v1.OrdersService` (`proto/orders/v1/orders.proto`, generated Go package `ordersv1`) on `:50052`. It owns a Postgres database called `orders` and never touches any other service's database. It also never calls any other service, which is either admirable isolation or an unfinished job, depending on how you squint (see [Known limitations](#known-limitations)).
+The orders service: a gRPC server implementing `orders.v1.OrdersService` (`proto/orders/v1/orders.proto`, generated Go package `ordersv1`) on `:50052`. It owns a Postgres database called `orders` and never touches any other service's database. Its one outbound call is to the inventory service: placing an order reserves stock there, and deleting an order puts it back.
 
 Every RPC requires a JWT. There are no public methods.
 
@@ -12,6 +12,8 @@ Background reading, if you want it: [architecture](../../docs/architecture.md), 
 |---|---|---|---|
 | `DATABASE_URL` | yes | | Postgres URL for the `orders` database |
 | `JWT_PUBLIC_KEY` | yes | | Ed25519 public key, PKIX PEM. Only the verifying half; this service never signs anything |
+| `INVENTORY_ADDR` | no | `localhost:50054` | Inventory gRPC address (`inventory:50054` in compose) |
+| `SERVICE_PRIVATE_KEY` | yes | | Ed25519 private key, PKCS#8 PEM, from `go run ./tools/keygen service`. Signs the service tokens inventory requires for reserve/release. Orders only |
 | `GRPC_ADDR` | no | `:50052` | Listen address |
 | `APP_ENV` | no | `development` | Anything other than `production` registers gRPC reflection |
 
@@ -51,16 +53,16 @@ The caller's identity is the JWT `sub`, which must be a UUID. Admin status is th
 
 | RPC | Who | Behaviour |
 |---|---|---|
-| `CreateOrder` | any authenticated user | The `id` is always generated server-side; whatever the client sends is ignored. An empty `user_id` means the caller. Naming another user is `PermissionDenied` unless you're an admin. `total_cents` must be in `0..10^12`. |
+| `CreateOrder` | any authenticated user | The `id` is always generated server-side; whatever the client sends is ignored. An empty `user_id` means the caller. Naming another user is `PermissionDenied` unless you're an admin. Needs 1 to 100 `lines` (`sku`, `quantity >= 1`). Stock is reserved all-or-nothing, and `total_cents` is computed from inventory's prices at that moment; client-sent `total_cents` and `unit_price_cents` are ignored. Total above 10^12 is `InvalidArgument` (stock is given back). If saving fails after reserving, the stock is released. Unknown SKU is `InvalidArgument`; not enough stock is `FailedPrecondition`; inventory down is `Unavailable`. |
 | `GetOrder` | owner or admin | Someone else's order is `NotFound`, not `PermissionDenied`, so ids can't be probed for existence. |
-| `UpdateOrder` | admin | Full replace of `user_id` and `total_cents` (both required and validated); bumps `updated_at`. |
-| `DeleteOrder` | admin | Deleting an order that isn't there is `NotFound`. |
+| `UpdateOrder` | admin | Reassigns `user_id` only (required); bumps `updated_at`. Lines and total are fixed once placed, and anything sent for them is ignored. |
+| `DeleteOrder` | admin | Deleting an order that isn't there is `NotFound`. Its lines' stock is released back to inventory after the delete; a failed release is logged and does not fail the delete. |
 | `ListOrders` | any authenticated user | Newest first. Non-admins always see only their own orders; asking for another `user_id` is `PermissionDenied`. Admins see everything, or can filter by `user_id`. |
 
 Other status codes you'll meet:
 
 - `Unauthenticated`: missing or invalid token, or a `sub` that isn't a UUID.
-- `InvalidArgument`: missing `order`, malformed UUIDs, out-of-range `total_cents`, bad `page_token`.
+- `InvalidArgument`: missing `order`, malformed UUIDs, missing/invalid lines, order total too large, bad `page_token`.
 - `Internal`: any store failure. The client gets a bare `internal error`; the detail goes to the log.
 
 ### Pagination
@@ -73,7 +75,7 @@ Other status codes you'll meet:
 
 ## Data model
 
-One table, created by `migrations/00001_create_orders.sql` (goose, embedded in the binary):
+`orders`, created by `migrations/00001_create_orders.sql` (goose, embedded in the binary):
 
 | Column | Type | Notes |
 |---|---|---|
@@ -82,6 +84,8 @@ One table, created by `migrations/00001_create_orders.sql` (goose, embedded in t
 | `total_cents` | `bigint` | not null, `CHECK (total_cents >= 0)` |
 | `created_at` | `timestamptz` | default `now()` |
 | `updated_at` | `timestamptz` | default `now()`; set to `now()` on update |
+
+`order_lines` (`migrations/00002_create_order_lines.sql`) holds `order_id` (cascade delete), `position`, `sku`, `quantity > 0` and `unit_price_cents >= 0`, keyed on `(order_id, position)`. Orders placed before this migration have no lines.
 
 Two indexes back the list queries: `(user_id, created_at DESC, id DESC)` for per-user listing and `(created_at DESC, id DESC)` for admins. The database enforces the lower bound on `total_cents`; the 10^12 upper bound lives only in the service.
 
@@ -106,14 +110,11 @@ go test ./services/orders/...          # also the store tests, via testcontainer
 
 The service tests cover authorisation, filter forcing, pagination (including identical `created_at` values) and the "store errors aren't leaked" rule. The bufconn test sends real requests through the JWT interceptor. The store tests run the actual SQL against `postgres:16-alpine` and skip themselves under `-short` or when Docker isn't usable.
 
-Worth knowing: when I last ran the store tests here, Docker was running but container creation failed with `unable to find network with name or ID bridge`, so they skipped. The SQL in `internal/store` compiles and is vetted, but I haven't seen it pass against a real Postgres from this machine. Run the full suite somewhere Docker behaves.
 
 ## Known limitations
 
-- **No cross-service checks.** Orders doesn't verify that `user_id` exists, reserves no inventory and doesn't involve payments. Consistency between services is a later design problem.
-- **The `healthcheck` subcommand probably doesn't work.** It calls `grpc.health.v1.Health/Check` without a token, but orders registers no public methods, so by my reading of the interceptor the call is rejected as `Unauthenticated`. The Dockerfile's `HEALTHCHECK` uses this subcommand, which would leave the container permanently `unhealthy`. Payments whitelists that one method; orders doesn't. I haven't run this end to end, so check before relying on it either way.
-- **The contract is thin, and `proto/` isn't ours to change here.** Sensible additions would be:
-  - line items, so `total_cents` can be derived instead of trusted;
+- **Reserve and save aren't one transaction.** If saving fails the stock is released, and if *that* fails (or the process dies between the two steps) the stock stays missing until an admin corrects it; the lines are in the log. A reserve that times out may also have committed. Fixing both needs a retry queue/outbox and an idempotency key on `ReserveStock`. Orders also doesn't verify that `user_id` exists.
+- **The contract is still thin.** Sensible additions would be:
   - a `status` field and state-transition RPCs instead of admin full-replace;
   - `created_at` / `updated_at` on `Order`;
   - a `FieldMask` on `UpdateOrderRequest` for partial updates;

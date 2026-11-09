@@ -20,8 +20,9 @@ and [protobuf and codegen](../../docs/protobuf-and-codegen.md).
 | `DATABASE_URL` | none, required | Postgres URL for this service's own database. |
 | `APP_ENV` | `development` | Anything other than `production` enables gRPC reflection. The Dockerfile sets `production`. |
 | `JWT_PUBLIC_KEY` | none, required | Ed25519 public key, PKIX PEM. Tokens must have issuer `microservices-app/users` and audience `microservices-app`. |
+| `SERVICE_PUBLIC_KEY` | none, required | Ed25519 public key (from `go run ./tools/keygen service`) that verifies the orders service's tokens (issuer `microservices-app/service`, audience `microservices-app-internal`). |
 
-Missing `DATABASE_URL` or `JWT_PUBLIC_KEY` stops the service at startup, as does
+Missing `DATABASE_URL`, `JWT_PUBLIC_KEY` or `SERVICE_PUBLIC_KEY` stops the service at startup, as does
 a key that isn't a valid Ed25519 PKIX PEM. Migrations are embedded in the binary
 and applied on every start. Both the migration and the connection retry for
 about 30 seconds, so the service can be started alongside its database without
@@ -60,7 +61,7 @@ The image runs as non-root on `gcr.io/distroless/static-debian12:nonroot`, with
 
 ## API
 
-Every RPC requires a valid bearer JWT; nothing is public. Reads are open to any
+Every RPC requires a valid bearer JWT; nothing is public except the health check. Reads are open to any
 authenticated user, since this is shared catalogue data. Writes need the `admin`
 role.
 
@@ -68,8 +69,10 @@ role.
 |---|---|---|
 | `CreateInventoryItem` | admin | The service generates the id; any id the caller sends is ignored. Duplicate SKU: `AlreadyExists`. |
 | `GetInventoryItem` | any authenticated user | Unknown id: `NotFound`. |
-| `UpdateInventoryItem` | admin | Full replace of `sku` and `quantity`, and bumps `updated_at`. SKU held by a different item: `AlreadyExists`. Unknown id: `NotFound`. |
+| `UpdateInventoryItem` | admin | Full replace of `sku`, `quantity` and `price_cents`, and bumps `updated_at`. SKU held by a different item: `AlreadyExists`. Unknown id: `NotFound`. |
 | `DeleteInventoryItem` | admin | Hard delete. Unknown id: `NotFound`. |
+| `ReserveStock` | service only | 1 to 100 lines of `sku` + `quantity >= 1`, no duplicate SKUs. Takes the stock for every line in one transaction or none (rows locked in SKU order; `UPDATE … WHERE quantity >= n`), and returns each line with its current `unit_price_cents`. Unknown SKU: `NotFound`. Short: `FailedPrecondition`. Users, admins included, get `PermissionDenied`. |
+| `ReleaseStock` | service only | Adds the quantities back in one transaction. SKUs that no longer exist are skipped. Not idempotent: releasing twice adds twice. |
 | `ListInventoryItems` | any authenticated user | Keyset pagination on `(created_at, id)`, newest first. Default page size 50, maximum 200. |
 
 Validation, applied to create and update:
@@ -95,13 +98,14 @@ opaque (base64 of timestamp and id); treat them that way.
 
 ## Data model
 
-One table, created by `migrations/00001_create_inventory_items.sql` (goose):
+One table, created by `migrations/00001_create_inventory_items.sql` (goose) and extended by `00002_add_price.sql`. Sample data for development is in `seed/dev-seed.sql`, loaded only by compose, never by a migration.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` | Primary key. |
 | `sku` | `text`, not null | Unique index `inventory_items_sku_key`. |
 | `quantity` | `integer`, not null | `CHECK (quantity >= 0)`. |
+| `price_cents` | `bigint`, not null | Default 0, `CHECK (price_cents >= 0)`; the service caps it at 10^9. Added by `00002_add_price.sql`. |
 | `created_at` | `timestamptz`, not null | Defaults to `now()`. |
 | `updated_at` | `timestamptz`, not null | Defaults to `now()`; set on update. |
 
@@ -129,16 +133,8 @@ go test ./services/inventory/...          # also runs the store tests on a throw
 
 ## Known limitations
 
-- **Lost updates.** `UpdateInventoryItem` sets an absolute `quantity`, so two
-  callers doing read-modify-write can overwrite each other, and this service
-  can't prevent that on its own. There's no field mask and no atomic adjust or
-  reserve RPC. When orders start reserving stock, the sensible addition is
-  `AdjustQuantity(id, delta)`: an atomic `quantity = quantity + $delta` that
-  fails if the result would be negative. It hasn't been built, and `proto/` is
-  unchanged.
-- **Health probe and auth.** `grpcx.Config.PublicMethods` is left empty in
-  `cmd/inventory/main.go`, and the health client sends no token. Reading the
-  code, that means `Health/Check` is rejected as `Unauthenticated`, so
-  `inventory healthcheck` (and therefore the Docker `HEALTHCHECK`) would report
-  failure against a running server. I haven't run it to confirm. `payments`
-  and `users` allow `/grpc.health.v1.Health/Check`; `orders` doesn't either.
+- **Lost updates on admin edits.** `UpdateInventoryItem` sets an absolute `quantity`, so
+  an admin's save can overwrite stock that was reserved in between (the form says
+  last save wins). Reserve and release are atomic deltas and don't have this problem.
+- **No idempotency on reserve/release.** A retry after a timeout can reserve or
+  release twice.

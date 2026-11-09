@@ -6,6 +6,7 @@ This page describes what the code does today. It covers token issuance, verifica
 
 - The **users** service is the only issuer. It signs short-lived access tokens (JWT, EdDSA / Ed25519) and manages opaque refresh tokens.
 - **orders**, **payments** and **inventory** (and users, for its own protected methods) verify access tokens locally with the public key. They never call the users service to do it.
+- **orders** also holds a second, separate key pair for calling **inventory** (see [service tokens](#service-tokens)).
 - The **gateway** holds the access and refresh tokens in cookies and attaches the access token as `authorization: Bearer <jwt>` on every call to a backend.
 
 ## Access tokens
@@ -41,6 +42,8 @@ Because verification is local, a token stays valid until it expires even if the 
 |---|---|---|
 | users | `JWT_PRIVATE_KEY` | Required. It derives the public key from this and uses it to verify its own protected methods. It does not read `JWT_PUBLIC_KEY`. |
 | orders, payments, inventory | `JWT_PUBLIC_KEY` | Required. A malformed key stops the service at startup. |
+| orders | `SERVICE_PRIVATE_KEY` | Required. Signs tokens for calls to inventory. |
+| inventory | `SERVICE_PUBLIC_KEY` | Required. Verifies those tokens. |
 | gateway | neither | It never verifies signatures; see below. |
 
 `docker-compose.yml` is wired this way: only `users` receives the private key, and compose refuses to start if `JWT_PRIVATE_KEY` or `JWT_PUBLIC_KEY` is unset (`${VAR:?…}`). See [local-development.md](local-development.md) for how to supply them.
@@ -80,7 +83,7 @@ No public methods. Every call needs a valid token with a UUID `sub`.
 |---|---|
 | `CreateOrder` | `user_id` defaults to the caller. Setting it to someone else needs `admin` (`PermissionDenied`). |
 | `GetOrder` | Owner or `admin`; otherwise `NotFound`. |
-| `UpdateOrder`, `DeleteOrder` | `admin` only. |
+| `UpdateOrder` (reassign the customer), `DeleteOrder` (returns the stock) | `admin` only. |
 | `ListOrders` | Non-admins are always restricted to their own orders. Asking for another user's gives `PermissionDenied`. Admins see everything, or can filter by `user_id`. |
 
 ### payments
@@ -104,6 +107,11 @@ No public methods.
 |---|---|
 | `GetInventoryItem`, `ListInventoryItems` | Any authenticated user. |
 | `CreateInventoryItem`, `UpdateInventoryItem`, `DeleteInventoryItem` | `admin` only (`PermissionDenied`). |
+| `ReserveStock`, `ReleaseStock` | Service identity only (`PermissionDenied` for every user, admins included). |
+
+## Service tokens
+
+Orders calls inventory's `ReserveStock` and `ReleaseStock` with a token it signs itself (`SERVICE_PRIVATE_KEY`, orders only; generate with `go run ./tools/keygen service`). Inventory verifies it with `SERVICE_PUBLIC_KEY`. These tokens use issuer `microservices-app/service` and audience `microservices-app-internal`, subject `orders`, one-minute lifetime, so a user token never verifies as a service token or the reverse, even though inventory accepts both kinds. The service flag (`Claims.Service`) is set by which verifier accepted the token, never read from the token. Reserve and release require it: an admin user is refused, and a service identity can't do admin writes.
 
 ## Passwords and login
 

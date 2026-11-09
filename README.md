@@ -20,14 +20,13 @@ You need Docker, Go (the version in `go.mod`) and a few minutes.
 ./start.sh
 ```
 
-That generates a keypair into `.env` (only if there isn't one already; `FORCE_KEYS=1 ./start.sh` regenerates) and runs `docker compose up --build`. The manual route is `go run ./tools/keygen`, then putting `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` in `.env` yourself.
+That generates the user-token keypair into `.env` (only if there isn't one already; `FORCE_KEYS=1 ./start.sh` regenerates), adds the service keypair (`SERVICE_PRIVATE_KEY`, `SERVICE_PUBLIC_KEY`, used by orders to call inventory) if it's missing, and runs `docker compose up --build`. The manual route is `go run ./tools/keygen` and `go run ./tools/keygen service`, then putting the four variables in `.env` yourself. Compose also loads ten sample products into inventory (`services/inventory/seed/dev-seed.sql`, development only; re-running never overwrites existing stock).
 
-Then open <http://localhost:3000>. Compose refuses to start without both keys, which is the intended behaviour. Multi-line PEMs in `.env` files have their own opinions about quoting; [local development](docs/local-development.md) covers the details, plus running services individually and creating the first admin.
+Then open <http://localhost:3000>. Compose refuses to start without the keys, which is the intended behaviour. Multi-line PEMs in `.env` files have their own opinions about quoting; [local development](docs/local-development.md) covers the details, plus running services individually and creating the first admin.
 
-Be aware of two things:
+Be aware of one thing:
 
 - The `users` service only runs with the log-only mailer (`APP_ENV=development`), and compose sets that for you. Verification and reset tokens are written to its logs instead of being emailed. Real email delivery doesn't exist yet.
-- Based on reading the code, the `orders` and `inventory` Docker health checks call the health RPC without a token and probably get rejected, so those containers likely report `unhealthy`. Nothing has been fixed. Each service README has the details.
 
 ## Repository layout
 

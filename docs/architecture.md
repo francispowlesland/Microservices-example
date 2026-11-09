@@ -32,10 +32,11 @@ The users service is the only one that issues tokens, and the only one with side
 
 ## How they communicate
 
-**Gateway to services, over gRPC, and nothing else.** That's worth stating plainly because "microservices" usually implies a web of calls between them. Here there isn't one. The only `grpc.NewClient` calls in the Go code are the health-check helper in `internal/platform/grpcx` and the tests. No service dials another, and there's no message broker.
+**Gateway to services, over gRPC, plus exactly one service-to-service call: orders to inventory.** "Microservices" usually implies a web of calls between them; here there's one edge. When an order is placed, orders calls `inventory.ReserveStock` (all lines or none, and it returns the unit prices the total is built from). Deleting an order calls `ReleaseStock`. Orders authenticates with its own service token, signed with a separate key pair from user tokens (see [auth](auth.md)). Nothing else dials anything, and there's no message broker.
 
 The consequences are easy to see in the schemas:
 
+- Because orders and inventory have separate databases, reserve-then-save is not one transaction. If saving the order fails, orders releases the stock; if that release fails it's logged for manual correction (no retry queue or outbox). A reserve that times out might still have committed.
 - `orders.user_id` and `payments.order_id` are plain `uuid` columns. No foreign keys (they'd have to cross databases), and no check in the code that the referenced user or order exists.
 - Payments will happily process a payment for an order ID that orders has never heard of. It records the ID, applies its own rules and moves on.
 - Anything that needs cross-service consistency has to be done by the caller, which today means the gateway or a human.
@@ -82,7 +83,7 @@ Each service follows the same shape: `cmd/<name>/main.go` (wiring only), `intern
 
 Every image is a multi-stage build ending in `gcr.io/distroless/static-debian12:nonroot`, defaulting to `APP_ENV=production`, with a `healthcheck` subcommand and a Dockerfile `HEALTHCHECK` that runs it (there's no shell in the image to run anything else).
 
-One known problem: the health check is a plain unary `grpc.health.v1.Health/Check` call with no token, and `authn` denies by default. The users and payments services explicitly list that method as public. **Orders and inventory don't**, so by my reading of the code their `healthcheck` subcommand gets `Unauthenticated` and their containers report `unhealthy` (I haven't run it end to end). Nothing in `docker-compose.yml` waits on service health (the gateway's `depends_on` is plain), so the stack still starts, but the status is misleading. The fix is one line in each `main.go`: add `PublicMethods: map[string]bool{"/grpc.health.v1.Health/Check": true}`.
+Every service lists `/grpc.health.v1.Health/Check` as a public method so the tokenless health probe passes `authn`; the compose stack was run to confirm all containers report healthy. Compose starts orders after inventory, and a one-shot `inventory-seed` container loads sample data once inventory is healthy.
 
 ## Why it looks like this, and what it costs
 
