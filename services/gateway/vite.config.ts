@@ -13,6 +13,10 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
+			// adapter-node assumes https without a proxy header, so plain-http form POSTs look cross-site.
+			// shortcut: build-time and localhost only, move to a real origin or PROTOCOL_HEADER behind TLS.
+			csrf: { trustedOrigins: ['http://localhost:3000'] },
+
 			adapter: adapter()
 		})
 	]
