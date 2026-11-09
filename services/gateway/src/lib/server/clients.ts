@@ -1,5 +1,5 @@
 import { createClient, type Interceptor } from '@connectrpc/connect';
-import { createGrpcTransport } from '@connectrpc/connect-node';
+import { createGrpcTransport, Http2SessionManager } from '@connectrpc/connect-node';
 import {
 	USERS_SERVICE_URL,
 	ORDERS_SERVICE_URL,
@@ -19,8 +19,19 @@ const bearer =
 		return next(req);
 	};
 
-const transport = (baseUrl: string, accessToken?: string) =>
-	createGrpcTransport({ baseUrl, interceptors: [bearer(accessToken)] });
+// One HTTP/2 connection per backend, shared by every request, instead of a new one per call.
+const sessions = new Map<string, Http2SessionManager>();
+
+const transport = (baseUrl: string, accessToken?: string) => {
+	let sessionManager = sessions.get(baseUrl);
+	if (!sessionManager) sessions.set(baseUrl, (sessionManager = new Http2SessionManager(baseUrl)));
+	return createGrpcTransport({
+		baseUrl,
+		sessionManager,
+		defaultTimeoutMs: 5000,
+		interceptors: [bearer(accessToken)]
+	});
+};
 
 /**
  * Per-request clients. Pass the caller's access token (from `event.locals`)
@@ -34,3 +45,5 @@ export const clients = (accessToken?: string) => ({
 	payments: createClient(PaymentsService, transport(PAYMENTS_SERVICE_URL, accessToken)),
 	inventory: createClient(InventoryService, transport(INVENTORY_SERVICE_URL, accessToken))
 });
+
+export const api = (locals: App.Locals) => clients(locals.session?.accessToken);
