@@ -43,6 +43,24 @@
 			</div>
 		</dl>
 
+		<h2 class="subheading mt-12 border-b border-ink pb-2">Items</h2>
+		{#if data.order.lines.length === 0}
+			<p class="mt-4 text-ink-soft">No item breakdown was recorded for this order.</p>
+		{:else}
+			<ul class="divide-y divide-line">
+				{#each data.order.lines as l (l.sku)}
+					<li class="grid grid-cols-[1fr_auto_6rem] items-center gap-4 py-2.5">
+						<span class="font-mono text-sm">{l.sku}</span>
+						<span class="text-sm text-ink-soft">{l.quantity} × {formatCents(l.unitPriceCents)}</span
+						>
+						<span class="text-right font-semibold"
+							>{formatCents(BigInt(l.quantity) * l.unitPriceCents)}</span
+						>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+
 		<h2 class="subheading mt-12 border-b border-ink pb-2">Payments</h2>
 		{#if data.payments.length === 0}
 			<p class="mt-4 text-ink-soft">Nothing paid against this order yet.</p>
@@ -101,7 +119,8 @@
 
 		{#if data.viewer?.isAdmin}
 			<section class="panel p-5">
-				<h2 class="subheading">Edit order</h2>
+				<h2 class="subheading">Reassign order</h2>
+				<p class="mt-1 text-sm text-ink-soft">Items and total are fixed once an order is placed.</p>
 				<form
 					method="POST"
 					action="?/update"
@@ -110,16 +129,6 @@
 						({ update }) =>
 							update({ reset: false })}
 				>
-					<label class="label">
-						Total
-						<input
-							class="field"
-							name="total"
-							inputmode="decimal"
-							required
-							value={centsInput(data.order.totalCents)}
-						/>
-					</label>
 					<label class="label">
 						Customer (user ID)
 						<input
@@ -138,7 +147,12 @@
 					action="?/delete"
 					class="mt-6 border-t border-line pt-4"
 					use:enhance={({ cancel }) => {
-						if (!confirm('Delete this order? Its payments stay in the ledger.')) cancel();
+						if (
+							!confirm(
+								'Delete this order? Its stock goes back on the shelf; its payments stay in the ledger.'
+							)
+						)
+							cancel();
 					}}
 				>
 					<FormError {form} on="delete" />

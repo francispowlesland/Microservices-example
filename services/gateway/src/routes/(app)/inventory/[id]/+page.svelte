@@ -3,6 +3,7 @@
 	import FormError from '#lib/components/FormError.svelte';
 	import PageHead from '#lib/components/PageHead.svelte';
 	import Status from '#lib/components/Status.svelte';
+	import { centsInput, formatCents } from '#lib/format.js';
 	import { stockTone } from '#lib/labels.js';
 
 	let { data, form } = $props();
@@ -14,12 +15,16 @@
 </PageHead>
 
 <div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
-	<dl class="grid h-fit grid-cols-2 gap-6">
+	<dl class="grid h-fit grid-cols-3 gap-6">
 		<div>
 			<dt class="text-sm text-ink-soft">On hand</dt>
 			<dd class="text-6xl font-extrabold condensed">
 				{data.item.quantity.toLocaleString('en-GB')}
 			</dd>
+		</div>
+		<div>
+			<dt class="text-sm text-ink-soft">Price</dt>
+			<dd class="text-4xl font-extrabold condensed">{formatCents(data.item.priceCents)}</dd>
 		</div>
 		<div>
 			<dt class="text-sm text-ink-soft">Availability</dt>
@@ -62,6 +67,16 @@
 						step="1"
 						required
 						value={data.item.quantity}
+					/>
+				</label>
+				<label class="label">
+					Price
+					<input
+						class="field"
+						name="price"
+						inputmode="decimal"
+						required
+						value={centsInput(data.item.priceCents)}
 					/>
 				</label>
 				<FormError {form} on="update" />

@@ -4,6 +4,7 @@
 	import PageHead from '#lib/components/PageHead.svelte';
 	import Pager from '#lib/components/Pager.svelte';
 	import Status from '#lib/components/Status.svelte';
+	import { formatCents } from '#lib/format.js';
 	import { stockTone } from '#lib/labels.js';
 
 	let { data, form } = $props();
@@ -36,6 +37,7 @@
 					<tr>
 						<th class="py-2 font-medium">SKU</th>
 						<th class="py-2 font-medium">Availability</th>
+						<th class="py-2 text-right font-medium">Price</th>
 						<th class="py-2 text-right font-medium">Quantity</th>
 					</tr>
 				</thead>
@@ -51,13 +53,14 @@
 								{/if}
 							</td>
 							<td class="py-2.5"><Status {tone}>{label}</Status></td>
+							<td class="py-2.5 text-right">{formatCents(item.priceCents)}</td>
 							<td class="py-2.5 text-right font-semibold"
 								>{item.quantity.toLocaleString('en-GB')}</td
 							>
 						</tr>
 					{:else}
 						<tr
-							><td colspan="3" class="py-4 text-ink-soft">No SKU on this page matches “{query}”.</td
+							><td colspan="4" class="py-4 text-ink-soft">No SKU on this page matches “{query}”.</td
 							></tr
 						>
 					{/each}
@@ -85,6 +88,10 @@
 				<label class="label">
 					Quantity
 					<input class="field" name="quantity" type="number" min="0" step="1" value="0" required />
+				</label>
+				<label class="label">
+					Price
+					<input class="field" name="price" inputmode="decimal" placeholder="4.99" required />
 				</label>
 				<FormError {form} on="create" />
 				{#if form?.created}<p class="text-sm text-moss" role="status">Added {form.created}.</p>{/if}

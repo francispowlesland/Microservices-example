@@ -46,12 +46,9 @@ export const actions: Actions = {
 
 	update: async ({ request, locals, params }) => {
 		const data = await request.formData();
-		const totalCents = parseCents(text(data, 'total'));
 		const userId = text(data, 'userId');
-		if (totalCents === null)
-			return fail(400, { on: 'update', message: 'Enter a total such as 24.99.' });
 		try {
-			await api(locals).orders.updateOrder({ order: { id: params.id, userId, totalCents } });
+			await api(locals).orders.updateOrder({ order: { id: params.id, userId } });
 			return { on: 'update', saved: true };
 		} catch (e) {
 			return failFrom(e, 'update');

@@ -6,6 +6,9 @@
 	import { formatCents, shortId } from '#lib/format.js';
 
 	let { data, form } = $props();
+
+	let rows = $state([0]);
+	let nextRow = 1;
 </script>
 
 <PageHead title="Orders">
@@ -55,10 +58,37 @@
 	<aside id="new" class="panel h-fit p-5">
 		<h2 class="subheading">Place an order</h2>
 		<form method="POST" action="?/create" class="mt-4 space-y-4" use:enhance>
-			<label class="label">
-				Total
-				<input class="field" name="total" inputmode="decimal" placeholder="24.99" required />
-			</label>
+			{#each rows as row (row)}
+				<div class="grid grid-cols-[1fr_4.5rem_auto] items-end gap-2">
+					<label class="label">
+						Product
+						<select class="field" name="sku">
+							<option value="">Choose…</option>
+							{#each data.products as p (p.id)}
+								<option value={p.sku} disabled={p.quantity < 1}>
+									{p.sku} · {formatCents(p.priceCents)}{p.quantity < 1 ? ' (out of stock)' : ''}
+								</option>
+							{/each}
+						</select>
+					</label>
+					<label class="label">
+						Qty
+						<input class="field" name="quantity" type="number" min="1" step="1" value="1" />
+					</label>
+					{#if rows.length > 1}
+						<button
+							type="button"
+							class="btn-quiet"
+							aria-label="Remove line"
+							onclick={() => (rows = rows.filter((r) => r !== row))}>✕</button
+						>
+					{/if}
+				</div>
+			{/each}
+			<button type="button" class="btn-quiet w-full" onclick={() => rows.push(nextRow++)}>
+				Add another product
+			</button>
+			<p class="text-sm text-ink-soft">The total is worked out from current prices.</p>
 			{#if data.viewer?.isAdmin}
 				<label class="label">
 					On behalf of (user ID)
