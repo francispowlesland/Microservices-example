@@ -10,6 +10,8 @@ type Config struct {
 	DatabaseURL string
 	AppEnv      string
 	JWTPublic   string
+	// ServicePublic verifies service-to-service tokens (orders reserving stock).
+	ServicePublic string
 }
 
 func Load() (Config, error) {
@@ -21,10 +23,15 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	svcPub, err := config.Required("SERVICE_PUBLIC_KEY")
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
-		GRPCAddr:    config.String("GRPC_ADDR", ":50054"),
-		DatabaseURL: dbURL,
-		AppEnv:      config.String("APP_ENV", "development"),
-		JWTPublic:   pub,
+		GRPCAddr:      config.String("GRPC_ADDR", ":50054"),
+		DatabaseURL:   dbURL,
+		AppEnv:        config.String("APP_ENV", "development"),
+		JWTPublic:     pub,
+		ServicePublic: svcPub,
 	}, nil
 }

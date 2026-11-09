@@ -20,16 +20,33 @@ import (
 
 // Errors a Store must return so the service can map them to gRPC codes.
 var (
-	ErrNotFound     = errors.New("inventory item not found")
-	ErrDuplicateSKU = errors.New("duplicate sku")
+	ErrNotFound          = errors.New("inventory item not found")
+	ErrDuplicateSKU      = errors.New("duplicate sku")
+	ErrUnknownSKU        = errors.New("unknown sku")
+	ErrInsufficientStock = errors.New("insufficient stock")
+)
+
+const (
+	// MaxPriceCents bounds a unit price so quantity*price cannot overflow int64 in any caller.
+	MaxPriceCents int64 = 1_000_000_000
+	// MaxStockLines bounds one Reserve/Release call.
+	MaxStockLines = 100
 )
 
 // Item is the domain representation of a stock row.
 type Item struct {
-	ID        uuid.UUID
-	SKU       string
-	Quantity  int32
-	CreatedAt time.Time
+	ID         uuid.UUID
+	SKU        string
+	Quantity   int32
+	PriceCents int64
+	CreatedAt  time.Time
+}
+
+// StockLine is one SKU and quantity in a Reserve or Release call. Reserve fills UnitPriceCents.
+type StockLine struct {
+	SKU            string
+	Quantity       int32
+	UnitPriceCents int64
 }
 
 // Cursor is the keyset position after which a List page starts.
@@ -43,11 +60,16 @@ type Cursor struct {
 type Store interface {
 	Create(ctx context.Context, it Item) (Item, error)
 	Get(ctx context.Context, id uuid.UUID) (Item, error)
-	Update(ctx context.Context, id uuid.UUID, sku string, quantity int32) (Item, error)
+	Update(ctx context.Context, id uuid.UUID, sku string, quantity int32, priceCents int64) (Item, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	// List returns up to limit items ordered by (created_at desc, id desc),
 	// strictly after cursor when it is non-nil.
 	List(ctx context.Context, after *Cursor, limit int) ([]Item, error)
+	// Reserve takes stock for every line in one transaction or for none. It returns the lines
+	// in input order with UnitPriceCents set, or an error wrapping ErrUnknownSKU or ErrInsufficientStock.
+	Reserve(ctx context.Context, lines []StockLine) ([]StockLine, error)
+	// Release puts stock back for every line in one transaction. SKUs that no longer exist are skipped.
+	Release(ctx context.Context, lines []StockLine) error
 }
 
 var skuPattern = regexp.MustCompile(`^[A-Z0-9][A-Z0-9._-]{0,63}$`)
@@ -70,11 +92,11 @@ func (s *Service) CreateInventoryItem(ctx context.Context, req *inventoryv1.Crea
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	sku, qty, err := validateItem(req.GetItem())
+	sku, qty, price, err := validateItem(req.GetItem())
 	if err != nil {
 		return nil, err
 	}
-	it, err := s.store.Create(ctx, Item{ID: uuid.New(), SKU: sku, Quantity: qty})
+	it, err := s.store.Create(ctx, Item{ID: uuid.New(), SKU: sku, Quantity: qty, PriceCents: price})
 	if err != nil {
 		return nil, s.mapErr(ctx, "create", err)
 	}
@@ -102,11 +124,11 @@ func (s *Service) UpdateInventoryItem(ctx context.Context, req *inventoryv1.Upda
 	if err != nil {
 		return nil, err
 	}
-	sku, qty, err := validateItem(req.GetItem())
+	sku, qty, price, err := validateItem(req.GetItem())
 	if err != nil {
 		return nil, err
 	}
-	it, err := s.store.Update(ctx, id, sku, qty)
+	it, err := s.store.Update(ctx, id, sku, qty, price)
 	if err != nil {
 		return nil, s.mapErr(ctx, "update", err)
 	}
@@ -155,6 +177,75 @@ func (s *Service) ListInventoryItems(ctx context.Context, req *inventoryv1.ListI
 	return resp, nil
 }
 
+// ReserveStock takes stock for every line or none. Service identity only.
+func (s *Service) ReserveStock(ctx context.Context, req *inventoryv1.ReserveStockRequest) (*inventoryv1.ReserveStockResponse, error) {
+	if err := requireService(ctx); err != nil {
+		return nil, err
+	}
+	lines, err := validateLines(req.GetLines())
+	if err != nil {
+		return nil, err
+	}
+	got, err := s.store.Reserve(ctx, lines)
+	if err != nil {
+		return nil, s.mapErr(ctx, "reserve", err)
+	}
+	return &inventoryv1.ReserveStockResponse{Lines: linesToProto(got)}, nil
+}
+
+// ReleaseStock puts stock back for every line. Service identity only.
+func (s *Service) ReleaseStock(ctx context.Context, req *inventoryv1.ReleaseStockRequest) (*inventoryv1.ReleaseStockResponse, error) {
+	if err := requireService(ctx); err != nil {
+		return nil, err
+	}
+	lines, err := validateLines(req.GetLines())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.Release(ctx, lines); err != nil {
+		return nil, s.mapErr(ctx, "release", err)
+	}
+	return &inventoryv1.ReleaseStockResponse{}, nil
+}
+
+func requireService(ctx context.Context) error {
+	if !authn.MustFromContext(ctx).Service {
+		return status.Error(codes.PermissionDenied, "service identity required")
+	}
+	return nil
+}
+
+func validateLines(in []*inventoryv1.StockLine) ([]StockLine, error) {
+	if len(in) == 0 || len(in) > MaxStockLines {
+		return nil, status.Errorf(codes.InvalidArgument, "lines must have 1 to %d entries", MaxStockLines)
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]StockLine, 0, len(in))
+	for _, l := range in {
+		sku, ok := NormaliseSKU(l.GetSku())
+		if !ok {
+			return nil, status.Error(codes.InvalidArgument, "line sku is invalid")
+		}
+		if l.GetQuantity() < 1 {
+			return nil, status.Errorf(codes.InvalidArgument, "%s: quantity must be >= 1", sku)
+		}
+		if seen[sku] {
+			return nil, status.Errorf(codes.InvalidArgument, "%s: duplicate sku in lines", sku)
+		}
+		seen[sku] = true
+		out = append(out, StockLine{SKU: sku, Quantity: l.GetQuantity()})
+	}
+	return out, nil
+}
+
+func linesToProto(lines []StockLine) []*inventoryv1.StockLine {
+	out := make([]*inventoryv1.StockLine, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, &inventoryv1.StockLine{Sku: l.SKU, Quantity: l.Quantity, UnitPriceCents: l.UnitPriceCents})
+	}
+	return out
+}
+
 func requireAdmin(ctx context.Context) error {
 	if !authn.MustFromContext(ctx).IsAdmin() {
 		return status.Error(codes.PermissionDenied, "admin role required")
@@ -170,19 +261,22 @@ func parseID(s string) (uuid.UUID, error) {
 	return id, nil
 }
 
-// validateItem returns the normalised SKU and the quantity.
-func validateItem(it *inventoryv1.InventoryItem) (string, int32, error) {
+// validateItem returns the normalised SKU, the quantity and the unit price.
+func validateItem(it *inventoryv1.InventoryItem) (string, int32, int64, error) {
 	if it == nil {
-		return "", 0, status.Error(codes.InvalidArgument, "item is required")
+		return "", 0, 0, status.Error(codes.InvalidArgument, "item is required")
 	}
 	sku, ok := NormaliseSKU(it.GetSku())
 	if !ok {
-		return "", 0, status.Error(codes.InvalidArgument, "sku must match ^[A-Z0-9][A-Z0-9._-]{0,63}$ after trimming and upper-casing")
+		return "", 0, 0, status.Error(codes.InvalidArgument, "sku must match ^[A-Z0-9][A-Z0-9._-]{0,63}$ after trimming and upper-casing")
 	}
 	if it.GetQuantity() < 0 {
-		return "", 0, status.Error(codes.InvalidArgument, "quantity must be >= 0")
+		return "", 0, 0, status.Error(codes.InvalidArgument, "quantity must be >= 0")
 	}
-	return sku, it.GetQuantity(), nil
+	if p := it.GetPriceCents(); p < 0 || p > MaxPriceCents {
+		return "", 0, 0, status.Errorf(codes.InvalidArgument, "price_cents must be 0..%d", MaxPriceCents)
+	}
+	return sku, it.GetQuantity(), it.GetPriceCents(), nil
 }
 
 // NormaliseSKU trims whitespace and upper-cases ASCII letters only (so
@@ -205,6 +299,10 @@ func (s *Service) mapErr(ctx context.Context, op string, err error) error {
 		return status.Error(codes.NotFound, "inventory item not found")
 	case errors.Is(err, ErrDuplicateSKU):
 		return status.Error(codes.AlreadyExists, "sku already exists")
+	case errors.Is(err, ErrUnknownSKU):
+		return status.Error(codes.NotFound, err.Error()) // store wraps with "<SKU>: unknown sku"
+	case errors.Is(err, ErrInsufficientStock):
+		return status.Error(codes.FailedPrecondition, err.Error()) // "<SKU>: insufficient stock"
 	default:
 		s.logger.ErrorContext(ctx, "inventory store error", slog.String("op", op), slog.Any("error", err))
 		return status.Error(codes.Internal, "internal error")
@@ -212,5 +310,5 @@ func (s *Service) mapErr(ctx context.Context, op string, err error) error {
 }
 
 func toProto(it Item) *inventoryv1.InventoryItem {
-	return &inventoryv1.InventoryItem{Id: it.ID.String(), Sku: it.SKU, Quantity: it.Quantity}
+	return &inventoryv1.InventoryItem{Id: it.ID.String(), Sku: it.SKU, Quantity: it.Quantity, PriceCents: it.PriceCents}
 }

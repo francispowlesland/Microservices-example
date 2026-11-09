@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -49,6 +50,10 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	svcPub, err := authn.ParsePublicKeyPEM([]byte(cfg.ServicePublic))
+	if err != nil {
+		return fmt.Errorf("SERVICE_PUBLIC_KEY: %w", err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -64,10 +69,11 @@ func run(logger *slog.Logger) error {
 
 	svc := service.New(store.New(pool), logger)
 	return grpcx.Run(ctx, grpcx.Config{
-		Addr:         cfg.GRPCAddr,
-		AppEnv:       cfg.AppEnv,
-		AuthVerifier: authn.NewVerifier(pub, authn.Issuer, authn.Audience),
-		Logger:       logger,
+		Addr:          cfg.GRPCAddr,
+		AppEnv:        cfg.AppEnv,
+		AuthVerifier:  authn.Verifiers{authn.NewVerifier(pub, authn.Issuer, authn.Audience), authn.NewServiceVerifier(svcPub)},
+		PublicMethods: map[string]bool{"/grpc.health.v1.Health/Check": true},
+		Logger:        logger,
 	}, func(s *grpc.Server) {
 		inventoryv1.RegisterInventoryServiceServer(s, svc)
 	})

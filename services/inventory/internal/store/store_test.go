@@ -2,6 +2,8 @@ package store_test
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,8 +55,8 @@ func TestCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	upd, err := st.Update(ctx, id, "CRUD-2", 9)
-	if err != nil || upd.SKU != "CRUD-2" || upd.Quantity != 9 || !upd.CreatedAt.Equal(created.CreatedAt) {
+	upd, err := st.Update(ctx, id, "CRUD-2", 9, 1250)
+	if err != nil || upd.SKU != "CRUD-2" || upd.Quantity != 9 || upd.PriceCents != 1250 || !upd.CreatedAt.Equal(created.CreatedAt) {
 		t.Fatalf("update = %+v, %v", upd, err)
 	}
 	var after time.Time
@@ -80,7 +82,7 @@ func TestNotFound(t *testing.T) {
 	if _, err := st.Get(ctx, missing); err != service.ErrNotFound {
 		t.Errorf("get = %v", err)
 	}
-	if _, err := st.Update(ctx, missing, "NOPE-1", 1); err != service.ErrNotFound {
+	if _, err := st.Update(ctx, missing, "NOPE-1", 1, 0); err != service.ErrNotFound {
 		t.Errorf("update = %v", err)
 	}
 	if err := st.Delete(ctx, missing); err != service.ErrNotFound {
@@ -102,10 +104,10 @@ func TestUniqueSKU(t *testing.T) {
 	if _, err := st.Create(ctx, service.Item{ID: uuid.New(), SKU: "DUP-1", Quantity: 1}); err != service.ErrDuplicateSKU {
 		t.Errorf("create dup = %v, want ErrDuplicateSKU", err)
 	}
-	if _, err := st.Update(ctx, b.ID, "DUP-1", 1); err != service.ErrDuplicateSKU {
+	if _, err := st.Update(ctx, b.ID, "DUP-1", 1, 0); err != service.ErrDuplicateSKU {
 		t.Errorf("update onto existing sku = %v, want ErrDuplicateSKU", err)
 	}
-	if _, err := st.Update(ctx, a.ID, "DUP-1", 3); err != nil {
+	if _, err := st.Update(ctx, a.ID, "DUP-1", 3, 0); err != nil {
 		t.Errorf("update keeping own sku = %v", err)
 	}
 }
@@ -141,7 +143,7 @@ func TestQuantityCheckConstraint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("zero quantity: %v", err)
 	}
-	if _, err := st.Update(ctx, it.ID, "NEG-2", -1); err == nil {
+	if _, err := st.Update(ctx, it.ID, "NEG-2", -1, 0); err == nil {
 		t.Fatal("update to negative quantity succeeded")
 	}
 	got, err := st.Get(ctx, it.ID)
@@ -224,5 +226,92 @@ func TestListEmpty(t *testing.T) {
 	items, err := st.List(context.Background(), nil, 10)
 	if err != nil || len(items) != 0 {
 		t.Fatalf("items=%v err=%v", items, err)
+	}
+}
+
+func seedItem(t *testing.T, st *store.Store, sku string, qty int32, price int64) {
+	t.Helper()
+	if _, err := st.Create(context.Background(), service.Item{ID: uuid.New(), SKU: sku, Quantity: qty, PriceCents: price}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func qtyOf(t *testing.T, pool *pgxpool.Pool, sku string) int32 {
+	t.Helper()
+	var q int32
+	if err := pool.QueryRow(context.Background(), `SELECT quantity FROM inventory_items WHERE sku=$1`, sku).Scan(&q); err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+
+func TestReserveAndRelease(t *testing.T) {
+	st, pool := setup(t)
+	ctx := context.Background()
+	seedItem(t, st, "RA-1", 5, 300)
+	seedItem(t, st, "RB-1", 1, 700)
+
+	got, err := st.Reserve(ctx, []service.StockLine{{SKU: "RB-1", Quantity: 1}, {SKU: "RA-1", Quantity: 4}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].SKU != "RB-1" || got[0].UnitPriceCents != 700 || got[1].SKU != "RA-1" || got[1].UnitPriceCents != 300 {
+		t.Fatalf("lines = %+v", got)
+	}
+	if qtyOf(t, pool, "RA-1") != 1 || qtyOf(t, pool, "RB-1") != 0 {
+		t.Fatal("stock not decremented")
+	}
+
+	// Short on the second line (in SKU order RB-1 is locked after RA-1): nothing may change.
+	_, err = st.Reserve(ctx, []service.StockLine{{SKU: "RA-1", Quantity: 1}, {SKU: "RB-1", Quantity: 1}})
+	if !errors.Is(err, service.ErrInsufficientStock) {
+		t.Fatalf("err = %v, want ErrInsufficientStock", err)
+	}
+	if qtyOf(t, pool, "RA-1") != 1 {
+		t.Errorf("RA-1 = %d after rolled-back reserve, want 1", qtyOf(t, pool, "RA-1"))
+	}
+	if _, err := st.Reserve(ctx, []service.StockLine{{SKU: "RA-1", Quantity: 1}, {SKU: "NOPE-1", Quantity: 1}}); !errors.Is(err, service.ErrUnknownSKU) {
+		t.Fatalf("err = %v, want ErrUnknownSKU", err)
+	}
+	if qtyOf(t, pool, "RA-1") != 1 {
+		t.Error("RA-1 changed by a reserve that failed on an unknown SKU")
+	}
+
+	if err := st.Release(ctx, []service.StockLine{{SKU: "RA-1", Quantity: 4}, {SKU: "RB-1", Quantity: 1}, {SKU: "GONE-1", Quantity: 9}}); err != nil {
+		t.Fatal(err)
+	}
+	if qtyOf(t, pool, "RA-1") != 5 || qtyOf(t, pool, "RB-1") != 1 {
+		t.Errorf("after release = %d/%d, want 5/1", qtyOf(t, pool, "RA-1"), qtyOf(t, pool, "RB-1"))
+	}
+}
+
+// Ten buyers race for five units: exactly five win and stock never goes negative.
+func TestReserveConcurrentNeverOversells(t *testing.T) {
+	st, pool := setup(t)
+	seedItem(t, st, "RACE-1", 5, 1)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	won := 0
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := st.Reserve(context.Background(), []service.StockLine{{SKU: "RACE-1", Quantity: 1}}); err == nil {
+				mu.Lock()
+				won++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if won != 5 || qtyOf(t, pool, "RACE-1") != 0 {
+		t.Errorf("won=%d stock=%d, want 5 and 0", won, qtyOf(t, pool, "RACE-1"))
+	}
+}
+
+func TestPriceCheckConstraint(t *testing.T) {
+	st, _ := setup(t)
+	if _, err := st.Create(context.Background(), service.Item{ID: uuid.New(), SKU: "NEGP-1", PriceCents: -1}); err == nil {
+		t.Fatal("negative price accepted")
 	}
 }

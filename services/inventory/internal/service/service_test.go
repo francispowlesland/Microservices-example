@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"sort"
@@ -74,7 +75,7 @@ func (f *fakeStore) Get(_ context.Context, id uuid.UUID) (service.Item, error) {
 	return it, nil
 }
 
-func (f *fakeStore) Update(_ context.Context, id uuid.UUID, sku string, qty int32) (service.Item, error) {
+func (f *fakeStore) Update(_ context.Context, id uuid.UUID, sku string, qty int32, price int64) (service.Item, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
@@ -87,7 +88,7 @@ func (f *fakeStore) Update(_ context.Context, id uuid.UUID, sku string, qty int3
 	if f.skuTaken(sku, id) {
 		return service.Item{}, service.ErrDuplicateSKU
 	}
-	it.SKU, it.Quantity = sku, qty
+	it.SKU, it.Quantity, it.PriceCents = sku, qty, price
 	f.items[id] = it
 	return it, nil
 }
@@ -137,7 +138,58 @@ func (f *fakeStore) List(_ context.Context, after *service.Cursor, limit int) ([
 	return out, nil
 }
 
+func (f *fakeStore) bySKU(sku string) (service.Item, bool) {
+	for _, it := range f.items {
+		if it.SKU == sku {
+			return it, true
+		}
+	}
+	return service.Item{}, false
+}
+
+func (f *fakeStore) Reserve(_ context.Context, lines []service.StockLine) ([]service.StockLine, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return nil, f.err
+	}
+	out := make([]service.StockLine, len(lines))
+	for i, l := range lines {
+		it, ok := f.bySKU(l.SKU)
+		if !ok {
+			return nil, fmt.Errorf("%s: %w", l.SKU, service.ErrUnknownSKU)
+		}
+		if it.Quantity < l.Quantity {
+			return nil, fmt.Errorf("%s: %w", l.SKU, service.ErrInsufficientStock)
+		}
+		l.UnitPriceCents = it.PriceCents
+		out[i] = l
+	}
+	for _, l := range lines {
+		it, _ := f.bySKU(l.SKU)
+		it.Quantity -= l.Quantity
+		f.items[it.ID] = it
+	}
+	return out, nil
+}
+
+func (f *fakeStore) Release(_ context.Context, lines []service.StockLine) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	for _, l := range lines {
+		if it, ok := f.bySKU(l.SKU); ok {
+			it.Quantity += l.Quantity
+			f.items[it.ID] = it
+		}
+	}
+	return nil
+}
+
 var (
+	serviceCtx  = authn.NewContext(context.Background(), authn.Claims{Subject: "orders", Roles: []string{"service"}, Service: true})
 	adminCtx    = authn.NewContext(context.Background(), authn.Claims{Subject: uuid.NewString(), Roles: []string{"admin"}})
 	customerCtx = authn.NewContext(context.Background(), authn.Claims{Subject: uuid.NewString(), Roles: []string{"customer"}})
 )
@@ -178,7 +230,7 @@ func TestRegistrationMatchesContract(t *testing.T) {
 		}
 		got[m.Name] = true
 	}
-	for _, m := range []string{"CreateInventoryItem", "GetInventoryItem", "UpdateInventoryItem", "DeleteInventoryItem", "ListInventoryItems"} {
+	for _, m := range []string{"CreateInventoryItem", "GetInventoryItem", "UpdateInventoryItem", "DeleteInventoryItem", "ListInventoryItems", "ReserveStock", "ReleaseStock"} {
 		if !got[m] {
 			t.Errorf("method %s not registered", m)
 		}
@@ -522,4 +574,141 @@ func TestStoreErrorsDoNotLeak(t *testing.T) {
 			}
 		})
 	}
+}
+
+func createPriced(t *testing.T, s *service.Service, sku string, qty int32, price int64) {
+	t.Helper()
+	if _, err := s.CreateInventoryItem(adminCtx, &inventoryv1.CreateInventoryItemRequest{
+		Item: &inventoryv1.InventoryItem{Sku: sku, Quantity: qty, PriceCents: price},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func stock(t *testing.T, fs *fakeStore, sku string) int32 {
+	t.Helper()
+	it, ok := fs.bySKU(sku)
+	if !ok {
+		t.Fatalf("no %s", sku)
+	}
+	return it.Quantity
+}
+
+func line(sku string, qty int32) *inventoryv1.StockLine {
+	return &inventoryv1.StockLine{Sku: sku, Quantity: qty}
+}
+
+func TestPriceValidation(t *testing.T) {
+	s, _ := newSvc(t)
+	for _, tt := range []struct {
+		price int64
+		want  codes.Code
+	}{{0, codes.OK}, {1999, codes.OK}, {service.MaxPriceCents, codes.OK}, {-1, codes.InvalidArgument}, {service.MaxPriceCents + 1, codes.InvalidArgument}} {
+		_, err := s.CreateInventoryItem(adminCtx, &inventoryv1.CreateInventoryItemRequest{
+			Item: &inventoryv1.InventoryItem{Sku: fmt.Sprintf("PR-%d", tt.price), Quantity: 1, PriceCents: tt.price},
+		})
+		wantCode(t, err, tt.want)
+	}
+}
+
+func TestStockAuthMatrix(t *testing.T) {
+	s, _ := newSvc(t)
+	createPriced(t, s, "AUTH-1", 10, 100)
+	lines := []*inventoryv1.StockLine{line("AUTH-1", 1)}
+	reserve := func(ctx context.Context) error {
+		_, err := s.ReserveStock(ctx, &inventoryv1.ReserveStockRequest{Lines: lines})
+		return err
+	}
+	release := func(ctx context.Context) error {
+		_, err := s.ReleaseStock(ctx, &inventoryv1.ReleaseStockRequest{Lines: lines})
+		return err
+	}
+	for name, call := range map[string]func(context.Context) error{"reserve": reserve, "release": release} {
+		t.Run(name, func(t *testing.T) {
+			wantCode(t, call(customerCtx), codes.PermissionDenied)
+			wantCode(t, call(adminCtx), codes.PermissionDenied) // an admin user is not a service
+			wantCode(t, call(serviceCtx), codes.OK)
+		})
+	}
+	// A service identity is not an admin: it cannot edit the catalogue.
+	_, err := s.CreateInventoryItem(serviceCtx, &inventoryv1.CreateInventoryItemRequest{Item: &inventoryv1.InventoryItem{Sku: "SVC-1"}})
+	wantCode(t, err, codes.PermissionDenied)
+}
+
+func TestReserveStock(t *testing.T) {
+	s, fs := newSvc(t)
+	createPriced(t, s, "RES-A", 5, 250)
+	createPriced(t, s, "RES-B", 2, 1000)
+
+	resp, err := s.ReserveStock(serviceCtx, &inventoryv1.ReserveStockRequest{Lines: []*inventoryv1.StockLine{line("res-b", 2), line("RES-A", 3)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := resp.GetLines()
+	if len(got) != 2 || got[0].GetSku() != "RES-B" || got[0].GetUnitPriceCents() != 1000 || got[1].GetSku() != "RES-A" || got[1].GetUnitPriceCents() != 250 {
+		t.Fatalf("lines = %v (want request order, normalised SKUs, prices)", got)
+	}
+	if stock(t, fs, "RES-A") != 2 || stock(t, fs, "RES-B") != 0 {
+		t.Errorf("stock = %d/%d", stock(t, fs, "RES-A"), stock(t, fs, "RES-B"))
+	}
+
+	// All or nothing: the second line is short, so the first must not be taken.
+	_, err = s.ReserveStock(serviceCtx, &inventoryv1.ReserveStockRequest{Lines: []*inventoryv1.StockLine{line("RES-A", 1), line("RES-B", 1)}})
+	wantCode(t, err, codes.FailedPrecondition)
+	if stock(t, fs, "RES-A") != 2 {
+		t.Errorf("RES-A = %d after a failed reserve, want 2", stock(t, fs, "RES-A"))
+	}
+	_, err = s.ReserveStock(serviceCtx, &inventoryv1.ReserveStockRequest{Lines: []*inventoryv1.StockLine{line("NOPE-1", 1)}})
+	wantCode(t, err, codes.NotFound)
+}
+
+func TestStockLineValidation(t *testing.T) {
+	s, _ := newSvc(t)
+	createPriced(t, s, "VAL-1", 5, 1)
+	tests := []struct {
+		name  string
+		lines []*inventoryv1.StockLine
+	}{
+		{"none", nil},
+		{"too many", func() []*inventoryv1.StockLine {
+			var l []*inventoryv1.StockLine
+			for i := 0; i <= service.MaxStockLines; i++ {
+				l = append(l, line(fmt.Sprintf("S-%d", i), 1))
+			}
+			return l
+		}()},
+		{"bad sku", []*inventoryv1.StockLine{line("a b", 1)}},
+		{"zero quantity", []*inventoryv1.StockLine{line("VAL-1", 0)}},
+		{"negative quantity", []*inventoryv1.StockLine{line("VAL-1", -1)}},
+		{"duplicate sku", []*inventoryv1.StockLine{line("VAL-1", 1), line("val-1", 1)}},
+		{"nil line", []*inventoryv1.StockLine{nil}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := s.ReserveStock(serviceCtx, &inventoryv1.ReserveStockRequest{Lines: tt.lines})
+			wantCode(t, err, codes.InvalidArgument)
+			_, err = s.ReleaseStock(serviceCtx, &inventoryv1.ReleaseStockRequest{Lines: tt.lines})
+			wantCode(t, err, codes.InvalidArgument)
+		})
+	}
+}
+
+func TestReleaseStock(t *testing.T) {
+	s, fs := newSvc(t)
+	createPriced(t, s, "REL-1", 1, 1)
+	if _, err := s.ReleaseStock(serviceCtx, &inventoryv1.ReleaseStockRequest{Lines: []*inventoryv1.StockLine{line("rel-1", 4), line("GONE-1", 1)}}); err != nil {
+		t.Fatal(err)
+	}
+	if stock(t, fs, "REL-1") != 5 {
+		t.Errorf("REL-1 = %d, want 5", stock(t, fs, "REL-1"))
+	}
+}
+
+func TestStockStoreErrorsDoNotLeak(t *testing.T) {
+	s, fs := newSvc(t)
+	fs.err = errors.New("pq: password=hunter2")
+	_, err := s.ReserveStock(serviceCtx, &inventoryv1.ReserveStockRequest{Lines: []*inventoryv1.StockLine{line("X-1", 1)}})
+	wantCode(t, err, codes.Internal)
+	_, err = s.ReleaseStock(serviceCtx, &inventoryv1.ReleaseStockRequest{Lines: []*inventoryv1.StockLine{line("X-1", 1)}})
+	wantCode(t, err, codes.Internal)
 }
