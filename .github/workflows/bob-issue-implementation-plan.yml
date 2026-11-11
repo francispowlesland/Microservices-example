@@ -7,7 +7,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: bob-pr-review-${{ github.event.pull_request.number }}
+  group: bob-implementation-plan-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 defaults:
@@ -15,12 +15,13 @@ defaults:
     shell: bash
 
 jobs:
-  review:
-    name: Review PR with Bob
+  plan:
+    name: Plan issue implementation with Bob
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
+      issues: read
       pull-requests: write
     steps:
       - name: Checkout PR
@@ -36,29 +37,46 @@ jobs:
           bash "$RUNNER_TEMP/bobshell.sh" --package-manager npm
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Prepare PR diff
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          # STUB: produce the diff Bob will review.
-          git diff "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
-          echo "Diff size: $(wc -l < "$RUNNER_TEMP/pr.diff") lines"
-
-      - name: Run Bob implementation plan
-        env:
-          # STUB: secret name is a placeholder; confirm what Bob Shell expects.
-          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
-        run: |
-          # STUB: replace with the real bobshell invocation.
-          echo "TODO: bob review of $RUNNER_TEMP/pr.diff"
-          echo "_Stub review: no analysis performed yet._" > "$RUNNER_TEMP/review.md"
-
-      - name: Post review as PR comment
+      - name: Read GitHub issue
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          # STUB: swap in a real post once review.md has content.
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/review.md"
+          # Issue = first issue the PR closes (e.g. "Fixes #123" in the PR body).
+          ISSUE_NUMBER=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+            --json closingIssuesReferences \
+            --jq '.closingIssuesReferences[0].number // empty')
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "::error::PR #$PR_NUMBER has no linked issue (add 'Fixes #<n>' to the PR body)."
+            exit 1
+          fi
+          gh issue view "$ISSUE_NUMBER" --repo "$REPO" \
+            --json number,title,body,labels > "$RUNNER_TEMP/issue.json"
+
+      - name: Understand issue
+        run: |
+          # STUB: replace with the real bobshell invocation that summarises
+          # $RUNNER_TEMP/issue.json into $RUNNER_TEMP/understanding.md.
+          echo "_Stub: issue not analysed yet._" > "$RUNNER_TEMP/understanding.md"
+
+      - name: Write implementation plan
+        env:
+          # STUB: secret name is a placeholder; confirm what Bob Shell expects.
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+        run: |
+          # STUB: replace with the real bobshell invocation that turns
+          # $RUNNER_TEMP/understanding.md into $RUNNER_TEMP/plan.md.
+          echo "_Stub: no implementation plan generated yet._" > "$RUNNER_TEMP/plan.md"
+
+      - name: Post implementation plan as PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Edit the previous bot comment if one exists, so synchronize
+          # events don't pile up duplicate plans.
+          gh pr comment "$PR_NUMBER" --repo "$REPO" \
+            --body-file "$RUNNER_TEMP/plan.md" \
+            --edit-last --create-if-none
