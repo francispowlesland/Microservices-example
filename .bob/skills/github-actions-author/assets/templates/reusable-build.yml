@@ -1,0 +1,66 @@
+# Reusable workflow (callee). Save in a central repo, e.g. org/ci-workflows/.github/workflows/build.yml
+# Caller:
+#   jobs:
+#     build:
+#       uses: org/ci-workflows/.github/workflows/build.yml@<FULL-SHA>   # SHA-pin: lockfiles don't cover this [GH-LOCKFILE]
+#       permissions:
+#         contents: read
+#       with:
+#         node-version: '22'
+#       secrets:
+#         NPM_TOKEN: ${{ secrets.NPM_TOKEN }}   # explicit, not `inherit`, across org boundaries
+name: Reusable build
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version for the project
+        type: string
+        default: '22'
+      working-directory:
+        type: string
+        default: '.'
+    secrets:
+      NPM_TOKEN:
+        required: false
+    outputs:
+      artifact-name:
+        description: Name of the uploaded build artifact
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      artifact-name: ${{ steps.meta.outputs.name }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@<PIN-SHA>
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@<PIN-SHA>
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+      - name: Install
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}   # step-level exposure only
+        run: npm ci
+      - run: npm run build
+      - id: meta
+        run: echo "name=build-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@<PIN-SHA>
+        with:
+          name: ${{ steps.meta.outputs.name }}
+          path: ${{ inputs.working-directory }}/dist/
+          if-no-files-found: error

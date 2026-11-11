@@ -1,0 +1,43 @@
+# Lint and security-scan the workflows themselves [ACTIONLINT] [ZIZMOR].
+name: Workflow lint
+
+on:
+  pull_request:
+    paths: ['.github/**']
+  push:
+    branches: [main]
+    paths: ['.github/**']
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@<PIN-SHA>
+        with:
+          persist-credentials: false
+      - name: Run actionlint (pinned container image)
+        # Replace <DIGEST> with the image digest: docker buildx imagetools inspect rhysd/actionlint:<version>
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:<DIGEST> -color
+
+  zizmor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write   # SARIF upload to code scanning (public repo or GHAS)
+    steps:
+      - uses: actions/checkout@<PIN-SHA>
+        with:
+          persist-credentials: false
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@<PIN-SHA>
+        # Without Advanced Security set `advanced-security: false` so findings fail the job.

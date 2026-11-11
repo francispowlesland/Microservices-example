@@ -1,0 +1,21 @@
+# Save as .github/dependabot.yml  [GH-DEPENDABOT-ACTIONS] [GH-DEPENDABOT-OPTS]
+# Keeps SHA pins (and actions.lock, if used) current via reviewable PRs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - "/"                       # covers .github/workflows
+      - "/.github/actions/*"      # local composite actions
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7             # let fresh releases age; security updates are not delayed
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns: ["*"]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"

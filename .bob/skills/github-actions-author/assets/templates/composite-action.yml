@@ -1,0 +1,33 @@
+# Composite action. Save as .github/actions/setup-project/action.yml
+# Use from a job step:  - uses: ./.github/actions/setup-project
+#                         with: { node-version: '22' }
+name: Setup project
+description: Checkout-independent toolchain setup and dependency install
+inputs:
+  node-version:
+    description: Node.js version
+    required: false
+    default: '22'
+  extra-args:
+    description: Extra args for npm ci
+    required: false
+    default: ''
+outputs:
+  cache-hit:
+    description: Whether the npm cache was hit
+    value: ${{ steps.node.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - id: node
+      uses: actions/setup-node@<PIN-SHA>
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+    - name: Install dependencies
+      shell: bash                         # required for every run step in composite actions
+      env:
+        EXTRA_ARGS: ${{ inputs.extra-args }}   # inputs go through env, never inline [GH-SCRIPT-INJ]
+      run: |
+        # shellcheck disable=SC2086
+        npm ci $EXTRA_ARGS

@@ -1,0 +1,38 @@
+# Privileged follow-up for fork PRs WITHOUT pull_request_target [GHSL-1].
+# Companion unprivileged workflow (name: "PR checks", on: pull_request) must
+# upload an artifact named "pr-report" containing pr-number.txt and report.md.
+# This workflow never checks out or executes PR code; artifact content is data.
+name: PR report comment
+
+on:
+  workflow_run:
+    workflows: ["PR checks"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read          # download artifact from the triggering run
+      pull-requests: write   # post the comment
+    steps:
+      - name: Download report (untrusted data)
+        uses: actions/download-artifact@<PIN-SHA>
+        with:
+          name: pr-report
+          path: ${{ runner.temp }}/pr-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Validate and comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_DIR: ${{ runner.temp }}/pr-report
+        run: |
+          pr="$(tr -cd '0-9' < "$REPORT_DIR/pr-number.txt")"
+          if [ -z "$pr" ]; then echo "invalid PR number" >&2; exit 1; fi
+          head -c 60000 "$REPORT_DIR/report.md" > "$RUNNER_TEMP/body.md"
+          gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/body.md"

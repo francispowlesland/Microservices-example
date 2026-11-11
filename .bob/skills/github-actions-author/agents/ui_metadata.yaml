@@ -1,0 +1,3 @@
+interface:
+  display_name: "GitHub Actions Author"
+  short_description: "Write secure, fast, maintainable GitHub Actions workflows using researched best practices"

@@ -1,0 +1,51 @@
+# Deploy with short-lived cloud credentials via OIDC; no cloud secrets stored.
+# Cloud trust policy must restrict the sub claim, e.g.
+#   repo:ORG/REPO:environment:production          [GH-OIDC]
+# AWS shown; for Azure use azure/login (client-id, tenant-id, subscription-id),
+# for GCP use google-github-actions/auth (workload_identity_provider, service_account).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: environment
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'staging' }}
+  cancel-in-progress: false          # never cancel a deploy half-way
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment || 'staging' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ${{ inputs.environment || 'staging' }}   # protection rules + env-scoped vars/secrets
+    permissions:
+      contents: read
+      id-token: write                # only this job can mint an OIDC token
+    steps:
+      - name: Checkout
+        uses: actions/checkout@<PIN-SHA>
+        with:
+          persist-credentials: false
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@<PIN-SHA>
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}   # a variable, not a secret: ARNs are not credentials
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}
+      - name: Deploy
+        env:
+          TARGET_ENV: ${{ inputs.environment || 'staging' }}
+        run: ./scripts/deploy.sh "$TARGET_ENV"
