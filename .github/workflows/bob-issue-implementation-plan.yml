@@ -1,34 +1,77 @@
 name: Bob implementation plan
 
+# When an issue is opened, Bob Shell reads it, reads the code, writes an
+# implementation plan in plan mode, and the plan is posted as a comment on the
+# issue.
+#
+# Which code Bob reads: the default branch, unless the issue body contains a
+# line such as "branch: feature/x", "ref: v1.2.0" or "commit: 1a2b3c4".
+# An unknown ref falls back to the default branch.
+#
+# Trust model:
+#   * Issue text is untrusted and goes to an LLM, so Bob runs read-only
+#     (plan mode, no shell, no MCP, no subagents) and the job that holds
+#     BOB_API_KEY has no write access to the issue.
+#   * Prompts and scripts always come from the default branch (./trusted).
+#     The code Bob reads (./code) is only ever data.
+#
+# "issues" workflows run from the default branch, so changes here only take
+# effect once merged. The first merge that adds .github/bob/ will not have
+# run yet; open a new issue afterwards.
+
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
+  issues:
+    types: [opened]
 
 permissions: {}
 
 concurrency:
-  group: bob-implementation-plan-${{ github.event.pull_request.number }}
+  group: bob-implementation-plan-${{ github.event.issue.number }}
   cancel-in-progress: true
 
 defaults:
   run:
     shell: bash
 
+env:
+  # Bobcoin caps per Bob invocation. ponytail: guessed values, tune from real runs.
+  UNDERSTAND_MAX_COST: "1"
+  UNDERSTAND_MAX_TURNS: "10"
+  PLAN_MAX_COST: "2"
+  PLAN_MAX_TURNS: "15"
+  COMMENT_MARKER: "<!-- bob-implementation-plan -->"
+
 jobs:
   plan:
     name: Plan issue implementation with Bob
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       issues: read
-      pull-requests: write
     steps:
-      - name: Checkout PR
+      - name: Checkout trusted prompts (default branch)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          path: trusted
+          sparse-checkout: .github/bob
+          persist-credentials: false
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: code
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Check trusted files
+        run: |
+          for f in run-bob.sh validate-plan.sh prompts/01-understand.md prompts/02-plan.md; do
+            [ -f "trusted/.github/bob/$f" ] || {
+              echo "::error::Default branch has no .github/bob/$f. Merge the PR that adds it, then open a new issue."
+              exit 1
+            }
+          done
 
       - name: Install Bob Shell
         run: |
@@ -37,46 +80,143 @@ jobs:
           bash "$RUNNER_TEMP/bobshell.sh" --package-manager npm
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Read GitHub issue
+      - name: Read issue
+        id: issue
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
         run: |
-          # Issue = first issue the PR closes (e.g. "Fixes #123" in the PR body).
-          ISSUE_NUMBER=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-            --json closingIssuesReferences \
-            --jq '.closingIssuesReferences[0].number // empty')
-          if [ -z "$ISSUE_NUMBER" ]; then
-            echo "::error::PR #$PR_NUMBER has no linked issue (add 'Fixes #<n>' to the PR body)."
-            exit 1
-          fi
+          # Issue text is untrusted: drop HTML comments (a favourite hiding
+          # place for injected instructions), cap the length, and remove our
+          # own delimiter so the text cannot close the block early.
           gh issue view "$ISSUE_NUMBER" --repo "$REPO" \
-            --json number,title,body,labels > "$RUNNER_TEMP/issue.json"
+            --json number,title,body,labels |
+          jq -r '
+            def clean: gsub("<!--[\\s\\S]*?-->"; "") | gsub("</?issue_data>"; "");
+            "<issue_data>\n"
+            + "Issue: #\(.number)\n"
+            + "Title: \(.title | clean)\n"
+            + "Labels: \([.labels[].name] | join(", "))\n"
+            + "Body:\n\((.body // "")[0:20000] | clean)\n"
+            + "</issue_data>"
+          ' > "$RUNNER_TEMP/issue.txt"
+
+          # First "branch:", "ref:" or "commit:" value in the body, if any.
+          # The character set rules out a leading "-" and shell metacharacters.
+          ref=$(gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json body --jq '.body // ""' |
+            grep -ioP '\b(?:branch|ref|commit):\s*`?\K[A-Za-z0-9][A-Za-z0-9._/-]*' |
+            head -n1 || true)
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Select code version
+        working-directory: code
+        env:
+          REQ_REF: ${{ steps.issue.outputs.ref }}
+        run: |
+          default=$(git rev-parse --abbrev-ref HEAD)
+          sha=""
+          if [ -n "$REQ_REF" ]; then
+            sha=$(git rev-parse --verify --quiet "refs/remotes/origin/$REQ_REF^{commit}" ||
+                  git rev-parse --verify --quiet "refs/tags/$REQ_REF^{commit}" ||
+                  git rev-parse --verify --quiet "$REQ_REF^{commit}" || true)
+          fi
+          if [ -n "$sha" ]; then
+            git checkout --quiet --detach "$sha"
+            echo "Code version: \`$REQ_REF\` (${sha:0:12})" > "$RUNNER_TEMP/context.txt"
+          else
+            [ -z "$REQ_REF" ] || echo "::warning::Ref '$REQ_REF' not found, using $default"
+            echo "Code version: default branch (${default})" > "$RUNNER_TEMP/context.txt"
+          fi
+          cat "$RUNNER_TEMP/context.txt"
 
       - name: Understand issue
+        env:
+          BOB_API_KEY: ${{ secrets.BOB_API_KEY }}
+        working-directory: code
         run: |
-          # STUB: replace with the real bobshell invocation that summarises
-          # $RUNNER_TEMP/issue.json into $RUNNER_TEMP/understanding.md.
-          echo "_Stub: issue not analysed yet._" > "$RUNNER_TEMP/understanding.md"
+          {
+            cat ../trusted/.github/bob/prompts/01-understand.md
+            echo
+            cat "$RUNNER_TEMP/context.txt"
+            echo
+            cat "$RUNNER_TEMP/issue.txt"
+          } > "$RUNNER_TEMP/understand-prompt.txt"
+          bash ../trusted/.github/bob/run-bob.sh \
+            "$RUNNER_TEMP/understand-prompt.txt" "$RUNNER_TEMP/understanding.md" \
+            "$UNDERSTAND_MAX_COST" "$UNDERSTAND_MAX_TURNS"
 
       - name: Write implementation plan
         env:
-          # STUB: secret name is a placeholder; confirm what Bob Shell expects.
-          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+          BOB_API_KEY: ${{ secrets.BOB_API_KEY }}
+        working-directory: code
         run: |
-          # STUB: replace with the real bobshell invocation that turns
-          # $RUNNER_TEMP/understanding.md into $RUNNER_TEMP/plan.md.
-          echo "_Stub: no implementation plan generated yet._" > "$RUNNER_TEMP/plan.md"
+          {
+            cat ../trusted/.github/bob/prompts/02-plan.md
+            echo
+            cat "$RUNNER_TEMP/context.txt"
+            echo
+            cat "$RUNNER_TEMP/issue.txt"
+            echo
+            echo "<understanding>"
+            cat "$RUNNER_TEMP/understanding.md"
+            echo "</understanding>"
+          } > "$RUNNER_TEMP/plan-prompt.txt"
+          bash ../trusted/.github/bob/run-bob.sh \
+            "$RUNNER_TEMP/plan-prompt.txt" "$RUNNER_TEMP/plan-raw.md" \
+            "$PLAN_MAX_COST" "$PLAN_MAX_TURNS"
 
-      - name: Post implementation plan as PR comment
+      - name: Validate plan structure
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p out
+          if problems=$(bash trusted/.github/bob/validate-plan.sh "$RUNNER_TEMP/plan-raw.md"); then
+            body=$(cat "$RUNNER_TEMP/plan-raw.md")
+            footer="_Generated by Bob from this issue. $(cat "$RUNNER_TEMP/context.txt"). A draft for review, not a decision. [Run log]($RUN_URL)_"
+          else
+            body="Bob's plan failed the structure check, so it is not shown.
+
+          $(printf '%s\n' "$problems" | sed 's/^/- /')"
+            footer="_Re-run the workflow to try again. [Run log]($RUN_URL)_"
+          fi
+          printf '%s\n## Implementation plan (Bob)\n\n%s\n\n---\n%s\n' \
+            "$COMMENT_MARKER" "$body" "$footer" > out/plan.md
+
+      - name: Upload plan
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bob-plan
+          path: out/plan.md
+          if-no-files-found: error
+          retention-days: 7
+
+  comment:
+    name: Post implementation plan
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # No Bob, no API key, no checkout: this job only writes the comment.
+    permissions:
+      issues: write
+    steps:
+      - name: Download plan
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bob-plan
+
+      - name: Create or update issue comment
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
         run: |
-          # Edit the previous bot comment if one exists, so synchronize
-          # events don't pile up duplicate plans.
-          gh pr comment "$PR_NUMBER" --repo "$REPO" \
-            --body-file "$RUNNER_TEMP/plan.md" \
-            --edit-last --create-if-none
+          # Find our previous comment by marker, restricted to the Actions bot
+          # so nobody can hijack the update by pasting the marker.
+          id=$(gh api --paginate "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+            --jq "[.[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$COMMENT_MARKER\")))] | last | .id // empty")
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$id" -F body=@plan.md > /dev/null
+          else
+            gh api --method POST "repos/$REPO/issues/$ISSUE_NUMBER/comments" -F body=@plan.md > /dev/null
+          fi
