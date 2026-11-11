@@ -1,0 +1,64 @@
+name: Bob implementation plan
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: bob-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  review:
+    name: Review PR with Bob
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Bob Shell
+        run: |
+          curl -fsSL https://bob.ibm.com/download/bobshell.sh \
+            --output "$RUNNER_TEMP/bobshell.sh"
+          bash "$RUNNER_TEMP/bobshell.sh" --package-manager npm
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Prepare PR diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # STUB: produce the diff Bob will review.
+          git diff "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/pr.diff"
+          echo "Diff size: $(wc -l < "$RUNNER_TEMP/pr.diff") lines"
+
+      - name: Run Bob implementation plan
+        env:
+          # STUB: secret name is a placeholder; confirm what Bob Shell expects.
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+        run: |
+          # STUB: replace with the real bobshell invocation.
+          echo "TODO: bob review of $RUNNER_TEMP/pr.diff"
+          echo "_Stub review: no analysis performed yet._" > "$RUNNER_TEMP/review.md"
+
+      - name: Post review as PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # STUB: swap in a real post once review.md has content.
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/review.md"
